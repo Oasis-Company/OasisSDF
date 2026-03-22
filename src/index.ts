@@ -1,25 +1,14 @@
 /**
- * OasisSDF - High-performance, data-driven WebGPU SDF engine
- * Main entry point
+ * OasisSDF
+ * 
+ * High-performance, data-driven WebGPU SDF engine for the next generation web
  */
 
-export { Engine } from './engine/Engine';
-export { SDFObject } from './objects/SDFObject';
-export { DeviceManager } from './engine/DeviceManager';
-export { BufferManager } from './engine/BufferManager';
-export type {
-  SDFObjectData,
-  MaterialData,
-  CameraData,
-  UniformData,
-  EngineConfig,
-  SDFObjectConfig
-} from './types/index';
-export {
-  BufferLayout,
-  SDFPrimitive,
-  OasisSDFError,
-  WebGPUError,
-  BufferError,
-  ValidationError
-} from './types/index';
+// Export types first
+export * from './types/index.js';
+
+// Export engines, excluding MemoryInfo which is already exported from types
+export { Engine } from './engine/Engine.js';
+export { DeviceManager, type DeviceManagerOptions, type WebGPUSupportInfo } from './engine/DeviceManager.js';
+export { BufferManager } from './engine/BufferManager.js';
+export { PipelineManager, type PipelineConfig } from './engine/PipelineManager.js';

@@ -190,3 +190,15 @@ export class ValidationError extends OasisSDFError {
     super(message, 'VALIDATION_ERROR');
   }
 }
+
+export class PipelineError extends OasisSDFError {
+  constructor(message: string) {
+    super(message, 'PIPELINE_ERROR');
+  }
+}
+
+export class EngineError extends OasisSDFError {
+  constructor(message: string) {
+    super(message, 'ENGINE_ERROR');
+  }
+}
