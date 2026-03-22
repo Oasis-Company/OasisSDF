@@ -5,6 +5,8 @@
 
 export { Engine } from './engine/Engine';
 export { SDFObject } from './objects/SDFObject';
+export { DeviceManager } from './engine/DeviceManager';
+export { BufferManager } from './engine/BufferManager';
 export type {
   SDFObjectData,
   MaterialData,

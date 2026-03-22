@@ -6,10 +6,10 @@ Reject Recompilation. Say Goodbye to Draw Call Bottlenecks.
 
 Built for Procedural Generation, Massive Dynamic Scenes, and Ultra-Lightweight Interactions. The next-generation core for Web 3D.
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![WebGPU](https://img.shields.io/badge/WebGPU-Native-orange.svg)](https://gpuweb.github.io/gpuweb/)
-[![Bundle Size](https://img.shields.io/badge/size-%3C40kb-green.svg)](https://bundlephobia.com/)
-[![Performance](https://img.shields.io/badge/fps-60%2B@10k_objs-red.svg)](https://oasissdf.dev/performance)
+[!\[License\](https://img.shields.io/badge/license-MIT-blue.svg null)](https://opensource.org/licenses/MIT)
+[!\[WebGPU\](https://img.shields.io/badge/WebGPU-Native-orange.svg null)](https://gpuweb.github.io/gpuweb/)
+[!\[Bundle Size\](https://img.shields.io/badge/size-%3C40kb-green.svg null)](https://bundlephobia.com/)
+[!\[Performance\](https://img.shields.io/badge/fps-60%2B@10k\_objs-red.svg null)](https://oasissdf.dev/performance)
 
 ## 🚀 Why Choose OasisSDF?
 
@@ -21,14 +21,14 @@ We don't load models; we compute shapes. By leveraging a completely static WGSL 
 
 ## ⚡ Core Advantages at a Glance
 
-| Feature | Traditional Engines (Three.js/Babylon) | OasisSDF |
-|---------|----------------------------------------|----------|
-| Rendering Architecture | Mesh + Draw Call / Instancing | Raymarching + Single Draw Call |
-| Dynamic Object Limit | ~1,000 (CPU-bound updates) | 10,000+ (Pure GPU-driven) |
-| Shape Blending/Boolean | Extremely difficult, expensive compute | Native support, zero extra cost |
-| Shader Compilation | Frequent recompilation based on material/light | Fully static, zero runtime compilation |
-| Core Bundle Size | 500KB - 2MB+ | < 40KB |
-| Ideal Use Cases | General 3D display, Games | Generative Art, SciVis, Massive Particles |
+| Feature                | Traditional Engines (Three.js/Babylon)         | OasisSDF                                  |
+| ---------------------- | ---------------------------------------------- | ----------------------------------------- |
+| Rendering Architecture | Mesh + Draw Call / Instancing                  | Raymarching + Single Draw Call            |
+| Shape Blending/Boolean | Extremely difficult, expensive compute         | Native support, zero extra cost           |
+| Dynamic Object Limit   | \~1,000 (CPU-bound updates)                    | 10,000+ (Pure GPU-driven)                 |
+| Shader Compilation     | Frequent recompilation based on material/light | Fully static, zero runtime compilation    |
+| Core Bundle Size       | 500KB - 2MB+                                   | < 40KB                                    |
+| Ideal Use Cases        | General 3D display, Games                      | Generative Art, SciVis, Massive Particles |
 
 ## 🔥 Key Features
 
@@ -115,7 +115,7 @@ graph LR
 
 - **Author**: ceaserzhao
 - **Organization**: Oasis Company
-- **Contact**: contact@oasiscompany.dev
+- **Contact**: <contact@oasiscompany.dev>
 
 OasisSDF is built by the team at Oasis Company, pushing the boundaries of what's possible in the browser.
 

@@ -9,6 +9,25 @@
 
 import { WebGPUError } from '../types/index';
 
+declare global {
+  interface Navigator {
+    gpu?: {
+      requestAdapter: (options?: any) => Promise<any>;
+      getPreferredCanvasFormat: () => string;
+    };
+  }
+}
+
+type GPUPowerPreference = 'low-power' | 'high-performance';
+type GPUFeatureName = string;
+type GPUSupportedLimits = Record<string, number>;
+type GPUDeviceLostInfo = { reason: string; message: string };
+type GPUDevice = any;
+type GPUCanvasContext = any;
+type GPUAdapter = any;
+type GPUTextureFormat = string;
+type GPUAdapterInfo = any;
+
 /**
  * Configuration options for DeviceManager
  */
@@ -264,7 +283,7 @@ export class DeviceManager {
     this.device = device;
 
     // Handle device loss
-    device.lost.then((info) => {
+    device.lost.then((info: GPUDeviceLostInfo) => {
       this.handleDeviceLoss(info);
     });
 
@@ -279,13 +298,13 @@ export class DeviceManager {
    */
   private async configureCanvasContext(
     canvas: HTMLCanvasElement,
-    options?: DeviceManagerOptions
+    _options?: DeviceManagerOptions
   ): Promise<void> {
     if (!this.device || !this.adapter) {
       throw new WebGPUError('Device or adapter not initialized');
     }
 
-    const context = canvas.getContext('webgpu');
+    const context = canvas.getContext('webgpu') as GPUCanvasContext;
     if (!context) {
       throw new WebGPUError('Failed to get WebGPU context from canvas. Make sure the canvas is valid.');
     }
