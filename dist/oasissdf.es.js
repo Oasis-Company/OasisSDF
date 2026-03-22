@@ -1,3 +1,19 @@
+var ObjectState = /* @__PURE__ */ ((ObjectState2) => {
+  ObjectState2[ObjectState2["FREE"] = 0] = "FREE";
+  ObjectState2[ObjectState2["ACTIVE"] = 1] = "ACTIVE";
+  ObjectState2[ObjectState2["DIRTY"] = 2] = "DIRTY";
+  ObjectState2[ObjectState2["PENDING"] = 3] = "PENDING";
+  return ObjectState2;
+})(ObjectState || {});
+var ObjectChangeFlags = /* @__PURE__ */ ((ObjectChangeFlags2) => {
+  ObjectChangeFlags2[ObjectChangeFlags2["NONE"] = 0] = "NONE";
+  ObjectChangeFlags2[ObjectChangeFlags2["TRANSFORM"] = 1] = "TRANSFORM";
+  ObjectChangeFlags2[ObjectChangeFlags2["MATERIAL"] = 2] = "MATERIAL";
+  ObjectChangeFlags2[ObjectChangeFlags2["VISIBILITY"] = 4] = "VISIBILITY";
+  ObjectChangeFlags2[ObjectChangeFlags2["ALL"] = 7] = "ALL";
+  return ObjectChangeFlags2;
+})(ObjectChangeFlags || {});
+
 const BufferLayout = {
   /** Calculate byte size of SDFObjectData */
   objectSize: 64,
@@ -858,6 +874,904 @@ class PipelineManager {
   }
 }
 
+/**
+ * Common utilities
+ * @module glMatrix
+ */
+
+var ARRAY_TYPE = typeof Float32Array !== "undefined" ? Float32Array : Array;
+
+/**
+ * 4x4 Matrix<br>Format: column-major, when typed out it looks like row-major<br>The matrices are being post multiplied.
+ * @module mat4
+ */
+
+/**
+ * Creates a new identity mat4
+ *
+ * @returns {mat4} a new 4x4 matrix
+ */
+function create$1() {
+  var out = new ARRAY_TYPE(16);
+  if (ARRAY_TYPE != Float32Array) {
+    out[1] = 0;
+    out[2] = 0;
+    out[3] = 0;
+    out[4] = 0;
+    out[6] = 0;
+    out[7] = 0;
+    out[8] = 0;
+    out[9] = 0;
+    out[11] = 0;
+    out[12] = 0;
+    out[13] = 0;
+    out[14] = 0;
+  }
+  out[0] = 1;
+  out[5] = 1;
+  out[10] = 1;
+  out[15] = 1;
+  return out;
+}
+
+/**
+ * Creates a new mat4 initialized with values from an existing matrix
+ *
+ * @param {ReadonlyMat4} a matrix to clone
+ * @returns {mat4} a new 4x4 matrix
+ */
+function clone$1(a) {
+  var out = new ARRAY_TYPE(16);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  out[3] = a[3];
+  out[4] = a[4];
+  out[5] = a[5];
+  out[6] = a[6];
+  out[7] = a[7];
+  out[8] = a[8];
+  out[9] = a[9];
+  out[10] = a[10];
+  out[11] = a[11];
+  out[12] = a[12];
+  out[13] = a[13];
+  out[14] = a[14];
+  out[15] = a[15];
+  return out;
+}
+
+/**
+ * Set a mat4 to the identity matrix
+ *
+ * @param {mat4} out the receiving matrix
+ * @returns {mat4} out
+ */
+function identity(out) {
+  out[0] = 1;
+  out[1] = 0;
+  out[2] = 0;
+  out[3] = 0;
+  out[4] = 0;
+  out[5] = 1;
+  out[6] = 0;
+  out[7] = 0;
+  out[8] = 0;
+  out[9] = 0;
+  out[10] = 1;
+  out[11] = 0;
+  out[12] = 0;
+  out[13] = 0;
+  out[14] = 0;
+  out[15] = 1;
+  return out;
+}
+
+/**
+ * Inverts a mat4
+ *
+ * @param {mat4} out the receiving matrix
+ * @param {ReadonlyMat4} a the source matrix
+ * @returns {mat4 | null} out, or null if source matrix is not invertible
+ */
+function invert(out, a) {
+  var a00 = a[0],
+    a01 = a[1],
+    a02 = a[2],
+    a03 = a[3];
+  var a10 = a[4],
+    a11 = a[5],
+    a12 = a[6],
+    a13 = a[7];
+  var a20 = a[8],
+    a21 = a[9],
+    a22 = a[10],
+    a23 = a[11];
+  var a30 = a[12],
+    a31 = a[13],
+    a32 = a[14],
+    a33 = a[15];
+  var b00 = a00 * a11 - a01 * a10;
+  var b01 = a00 * a12 - a02 * a10;
+  var b02 = a00 * a13 - a03 * a10;
+  var b03 = a01 * a12 - a02 * a11;
+  var b04 = a01 * a13 - a03 * a11;
+  var b05 = a02 * a13 - a03 * a12;
+  var b06 = a20 * a31 - a21 * a30;
+  var b07 = a20 * a32 - a22 * a30;
+  var b08 = a20 * a33 - a23 * a30;
+  var b09 = a21 * a32 - a22 * a31;
+  var b10 = a21 * a33 - a23 * a31;
+  var b11 = a22 * a33 - a23 * a32;
+
+  // Calculate the determinant
+  var det = b00 * b11 - b01 * b10 + b02 * b09 + b03 * b08 - b04 * b07 + b05 * b06;
+  if (!det) {
+    return null;
+  }
+  det = 1.0 / det;
+  out[0] = (a11 * b11 - a12 * b10 + a13 * b09) * det;
+  out[1] = (a02 * b10 - a01 * b11 - a03 * b09) * det;
+  out[2] = (a31 * b05 - a32 * b04 + a33 * b03) * det;
+  out[3] = (a22 * b04 - a21 * b05 - a23 * b03) * det;
+  out[4] = (a12 * b08 - a10 * b11 - a13 * b07) * det;
+  out[5] = (a00 * b11 - a02 * b08 + a03 * b07) * det;
+  out[6] = (a32 * b02 - a30 * b05 - a33 * b01) * det;
+  out[7] = (a20 * b05 - a22 * b02 + a23 * b01) * det;
+  out[8] = (a10 * b10 - a11 * b08 + a13 * b06) * det;
+  out[9] = (a01 * b08 - a00 * b10 - a03 * b06) * det;
+  out[10] = (a30 * b04 - a31 * b02 + a33 * b00) * det;
+  out[11] = (a21 * b02 - a20 * b04 - a23 * b00) * det;
+  out[12] = (a11 * b07 - a10 * b09 - a12 * b06) * det;
+  out[13] = (a00 * b09 - a01 * b07 + a02 * b06) * det;
+  out[14] = (a31 * b01 - a30 * b03 - a32 * b00) * det;
+  out[15] = (a20 * b03 - a21 * b01 + a22 * b00) * det;
+  return out;
+}
+
+/**
+ * Translate a mat4 by the given vector
+ *
+ * @param {mat4} out the receiving matrix
+ * @param {ReadonlyMat4} a the matrix to translate
+ * @param {ReadonlyVec3} v vector to translate by
+ * @returns {mat4} out
+ */
+function translate(out, a, v) {
+  var x = v[0],
+    y = v[1],
+    z = v[2];
+  var a00, a01, a02, a03;
+  var a10, a11, a12, a13;
+  var a20, a21, a22, a23;
+  if (a === out) {
+    out[12] = a[0] * x + a[4] * y + a[8] * z + a[12];
+    out[13] = a[1] * x + a[5] * y + a[9] * z + a[13];
+    out[14] = a[2] * x + a[6] * y + a[10] * z + a[14];
+    out[15] = a[3] * x + a[7] * y + a[11] * z + a[15];
+  } else {
+    a00 = a[0];
+    a01 = a[1];
+    a02 = a[2];
+    a03 = a[3];
+    a10 = a[4];
+    a11 = a[5];
+    a12 = a[6];
+    a13 = a[7];
+    a20 = a[8];
+    a21 = a[9];
+    a22 = a[10];
+    a23 = a[11];
+    out[0] = a00;
+    out[1] = a01;
+    out[2] = a02;
+    out[3] = a03;
+    out[4] = a10;
+    out[5] = a11;
+    out[6] = a12;
+    out[7] = a13;
+    out[8] = a20;
+    out[9] = a21;
+    out[10] = a22;
+    out[11] = a23;
+    out[12] = a00 * x + a10 * y + a20 * z + a[12];
+    out[13] = a01 * x + a11 * y + a21 * z + a[13];
+    out[14] = a02 * x + a12 * y + a22 * z + a[14];
+    out[15] = a03 * x + a13 * y + a23 * z + a[15];
+  }
+  return out;
+}
+
+/**
+ * Scales the mat4 by the dimensions in the given vec3 not using vectorization
+ *
+ * @param {mat4} out the receiving matrix
+ * @param {ReadonlyMat4} a the matrix to scale
+ * @param {ReadonlyVec3} v the vec3 to scale the matrix by
+ * @returns {mat4} out
+ **/
+function scale(out, a, v) {
+  var x = v[0],
+    y = v[1],
+    z = v[2];
+  out[0] = a[0] * x;
+  out[1] = a[1] * x;
+  out[2] = a[2] * x;
+  out[3] = a[3] * x;
+  out[4] = a[4] * y;
+  out[5] = a[5] * y;
+  out[6] = a[6] * y;
+  out[7] = a[7] * y;
+  out[8] = a[8] * z;
+  out[9] = a[9] * z;
+  out[10] = a[10] * z;
+  out[11] = a[11] * z;
+  out[12] = a[12];
+  out[13] = a[13];
+  out[14] = a[14];
+  out[15] = a[15];
+  return out;
+}
+
+/**
+ * Rotates a matrix by the given angle around the X axis
+ *
+ * @param {mat4} out the receiving matrix
+ * @param {ReadonlyMat4} a the matrix to rotate
+ * @param {Number} rad the angle to rotate the matrix by
+ * @returns {mat4} out
+ */
+function rotateX(out, a, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  var a10 = a[4];
+  var a11 = a[5];
+  var a12 = a[6];
+  var a13 = a[7];
+  var a20 = a[8];
+  var a21 = a[9];
+  var a22 = a[10];
+  var a23 = a[11];
+  if (a !== out) {
+    // If the source and destination differ, copy the unchanged rows
+    out[0] = a[0];
+    out[1] = a[1];
+    out[2] = a[2];
+    out[3] = a[3];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+
+  // Perform axis-specific matrix multiplication
+  out[4] = a10 * c + a20 * s;
+  out[5] = a11 * c + a21 * s;
+  out[6] = a12 * c + a22 * s;
+  out[7] = a13 * c + a23 * s;
+  out[8] = a20 * c - a10 * s;
+  out[9] = a21 * c - a11 * s;
+  out[10] = a22 * c - a12 * s;
+  out[11] = a23 * c - a13 * s;
+  return out;
+}
+
+/**
+ * Rotates a matrix by the given angle around the Y axis
+ *
+ * @param {mat4} out the receiving matrix
+ * @param {ReadonlyMat4} a the matrix to rotate
+ * @param {Number} rad the angle to rotate the matrix by
+ * @returns {mat4} out
+ */
+function rotateY(out, a, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  var a00 = a[0];
+  var a01 = a[1];
+  var a02 = a[2];
+  var a03 = a[3];
+  var a20 = a[8];
+  var a21 = a[9];
+  var a22 = a[10];
+  var a23 = a[11];
+  if (a !== out) {
+    // If the source and destination differ, copy the unchanged rows
+    out[4] = a[4];
+    out[5] = a[5];
+    out[6] = a[6];
+    out[7] = a[7];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+
+  // Perform axis-specific matrix multiplication
+  out[0] = a00 * c - a20 * s;
+  out[1] = a01 * c - a21 * s;
+  out[2] = a02 * c - a22 * s;
+  out[3] = a03 * c - a23 * s;
+  out[8] = a00 * s + a20 * c;
+  out[9] = a01 * s + a21 * c;
+  out[10] = a02 * s + a22 * c;
+  out[11] = a03 * s + a23 * c;
+  return out;
+}
+
+/**
+ * Rotates a matrix by the given angle around the Z axis
+ *
+ * @param {mat4} out the receiving matrix
+ * @param {ReadonlyMat4} a the matrix to rotate
+ * @param {Number} rad the angle to rotate the matrix by
+ * @returns {mat4} out
+ */
+function rotateZ(out, a, rad) {
+  var s = Math.sin(rad);
+  var c = Math.cos(rad);
+  var a00 = a[0];
+  var a01 = a[1];
+  var a02 = a[2];
+  var a03 = a[3];
+  var a10 = a[4];
+  var a11 = a[5];
+  var a12 = a[6];
+  var a13 = a[7];
+  if (a !== out) {
+    // If the source and destination differ, copy the unchanged last row
+    out[8] = a[8];
+    out[9] = a[9];
+    out[10] = a[10];
+    out[11] = a[11];
+    out[12] = a[12];
+    out[13] = a[13];
+    out[14] = a[14];
+    out[15] = a[15];
+  }
+
+  // Perform axis-specific matrix multiplication
+  out[0] = a00 * c + a10 * s;
+  out[1] = a01 * c + a11 * s;
+  out[2] = a02 * c + a12 * s;
+  out[3] = a03 * c + a13 * s;
+  out[4] = a10 * c - a00 * s;
+  out[5] = a11 * c - a01 * s;
+  out[6] = a12 * c - a02 * s;
+  out[7] = a13 * c - a03 * s;
+  return out;
+}
+
+/**
+ * 3 Dimensional Vector
+ * @module vec3
+ */
+
+/**
+ * Creates a new, empty vec3
+ *
+ * @returns {vec3} a new 3D vector
+ */
+function create() {
+  var out = new ARRAY_TYPE(3);
+  if (ARRAY_TYPE != Float32Array) {
+    out[0] = 0;
+    out[1] = 0;
+    out[2] = 0;
+  }
+  return out;
+}
+
+/**
+ * Creates a new vec3 initialized with values from an existing vector
+ *
+ * @param {ReadonlyVec3} a vector to clone
+ * @returns {vec3} a new 3D vector
+ */
+function clone(a) {
+  var out = new ARRAY_TYPE(3);
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  return out;
+}
+
+/**
+ * Creates a new vec3 initialized with the given values
+ *
+ * @param {Number} x X component
+ * @param {Number} y Y component
+ * @param {Number} z Z component
+ * @returns {vec3} a new 3D vector
+ */
+function fromValues(x, y, z) {
+  var out = new ARRAY_TYPE(3);
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  return out;
+}
+
+/**
+ * Copy the values from one vec3 to another
+ *
+ * @param {vec3} out the receiving vector
+ * @param {ReadonlyVec3} a the source vector
+ * @returns {vec3} out
+ */
+function copy(out, a) {
+  out[0] = a[0];
+  out[1] = a[1];
+  out[2] = a[2];
+  return out;
+}
+
+/**
+ * Set the components of a vec3 to the given values
+ *
+ * @param {vec3} out the receiving vector
+ * @param {Number} x X component
+ * @param {Number} y Y component
+ * @param {Number} z Z component
+ * @returns {vec3} out
+ */
+function set(out, x, y, z) {
+  out[0] = x;
+  out[1] = y;
+  out[2] = z;
+  return out;
+}
+
+/**
+ * Adds two vec3's
+ *
+ * @param {vec3} out the receiving vector
+ * @param {ReadonlyVec3} a the first operand
+ * @param {ReadonlyVec3} b the second operand
+ * @returns {vec3} out
+ */
+function add(out, a, b) {
+  out[0] = a[0] + b[0];
+  out[1] = a[1] + b[1];
+  out[2] = a[2] + b[2];
+  return out;
+}
+
+/**
+ * Subtracts vector b from vector a
+ *
+ * @param {vec3} out the receiving vector
+ * @param {ReadonlyVec3} a the first operand
+ * @param {ReadonlyVec3} b the second operand
+ * @returns {vec3} out
+ */
+function subtract(out, a, b) {
+  out[0] = a[0] - b[0];
+  out[1] = a[1] - b[1];
+  out[2] = a[2] - b[2];
+  return out;
+}
+
+/**
+ * Multiplies two vec3's
+ *
+ * @param {vec3} out the receiving vector
+ * @param {ReadonlyVec3} a the first operand
+ * @param {ReadonlyVec3} b the second operand
+ * @returns {vec3} out
+ */
+function multiply(out, a, b) {
+  out[0] = a[0] * b[0];
+  out[1] = a[1] * b[1];
+  out[2] = a[2] * b[2];
+  return out;
+}
+
+/**
+ * Normalize a vec3
+ *
+ * @param {vec3} out the receiving vector
+ * @param {ReadonlyVec3} a vector to normalize
+ * @returns {vec3} out
+ */
+function normalize(out, a) {
+  var x = a[0];
+  var y = a[1];
+  var z = a[2];
+  var len = x * x + y * y + z * z;
+  if (len > 0) {
+    //TODO: evaluate use of glm_invsqrt here?
+    len = 1 / Math.sqrt(len);
+  }
+  out[0] = a[0] * len;
+  out[1] = a[1] * len;
+  out[2] = a[2] * len;
+  return out;
+}
+
+/**
+ * Perform some operation over an array of vec3s.
+ *
+ * @param {Array} a the array of vectors to iterate over
+ * @param {Number} stride Number of elements between the start of each vec3. If 0 assumes tightly packed
+ * @param {Number} offset Number of elements to skip at the beginning of the array
+ * @param {Number} count Number of vec3s to iterate over. If 0 iterates over entire array
+ * @param {Function} fn Function to call for each vector in the array
+ * @param {Object} [arg] additional argument to pass to fn
+ * @returns {Array} a
+ * @function
+ */
+(function () {
+  var vec = create();
+  return function (a, stride, offset, count, fn, arg) {
+    var i, l;
+    if (!stride) {
+      stride = 3;
+    }
+    if (!offset) {
+      offset = 0;
+    }
+    if (count) {
+      l = Math.min(count * stride + offset, a.length);
+    } else {
+      l = a.length;
+    }
+    for (i = offset; i < l; i += stride) {
+      vec[0] = a[i];
+      vec[1] = a[i + 1];
+      vec[2] = a[i + 2];
+      fn(vec, vec, arg);
+      a[i] = vec[0];
+      a[i + 1] = vec[1];
+      a[i + 2] = vec[2];
+    }
+    return a;
+  };
+})();
+
+class SDFObject {
+  id;
+  state;
+  changeFlags;
+  position;
+  rotation;
+  scale;
+  material;
+  type;
+  visible;
+  constructor(id, config) {
+    this.id = id;
+    this.state = ObjectState.ACTIVE;
+    this.changeFlags = ObjectChangeFlags.ALL;
+    this.type = config.type;
+    this.position = fromValues(...config.transform?.position ?? [0, 0, 0]);
+    this.rotation = fromValues(...config.transform?.rotation ?? [0, 0, 0]);
+    this.scale = fromValues(...config.transform?.scale ?? [1, 1, 1]);
+    this.material = {
+      color: config.material?.color ?? [1, 1, 1],
+      metallic: config.material?.metallic ?? 0.5,
+      roughness: config.material?.roughness ?? 0.5
+    };
+    this.visible = config.visible ?? true;
+  }
+  getId() {
+    return this.id;
+  }
+  setPosition(x, y, z) {
+    if (this.position[0] !== x || this.position[1] !== y || this.position[2] !== z) {
+      set(this.position, x, y, z);
+      this.markDirty(ObjectChangeFlags.TRANSFORM);
+    }
+  }
+  setRotation(x, y, z) {
+    if (this.rotation[0] !== x || this.rotation[1] !== y || this.rotation[2] !== z) {
+      set(this.rotation, x, y, z);
+      this.markDirty(ObjectChangeFlags.TRANSFORM);
+    }
+  }
+  setScale(x, y, z) {
+    if (this.scale[0] !== x || this.scale[1] !== y || this.scale[2] !== z) {
+      set(this.scale, x, y, z);
+      this.markDirty(ObjectChangeFlags.TRANSFORM);
+    }
+  }
+  getColor() {
+    return this.material.color;
+  }
+  setColor(r, g, b) {
+    if (this.material.color[0] !== r || this.material.color[1] !== g || this.material.color[2] !== b) {
+      this.material.color = [r, g, b];
+      this.markDirty(ObjectChangeFlags.MATERIAL);
+    }
+  }
+  setMetallic(value) {
+    if (this.material.metallic !== value) {
+      this.material.metallic = value;
+      this.markDirty(ObjectChangeFlags.MATERIAL);
+    }
+  }
+  setRoughness(value) {
+    if (this.material.roughness !== value) {
+      this.material.roughness = value;
+      this.markDirty(ObjectChangeFlags.MATERIAL);
+    }
+  }
+  setVisible(visible) {
+    if (this.visible !== visible) {
+      this.visible = visible;
+      this.markDirty(ObjectChangeFlags.VISIBILITY);
+    }
+  }
+  isVisible() {
+    return this.visible;
+  }
+  getState() {
+    return this.state;
+  }
+  setState(state) {
+    this.state = state;
+  }
+  isDirty() {
+    return this.state === ObjectState.DIRTY || this.changeFlags !== ObjectChangeFlags.NONE;
+  }
+  getChangeFlags() {
+    return this.changeFlags;
+  }
+  clearDirty() {
+    this.changeFlags = ObjectChangeFlags.NONE;
+    if (this.state === ObjectState.DIRTY) {
+      this.state = ObjectState.ACTIVE;
+    }
+  }
+  markDirty(flags) {
+    this.changeFlags |= flags;
+    if (this.state === ObjectState.ACTIVE) {
+      this.state = ObjectState.DIRTY;
+    }
+  }
+  toObjectData() {
+    return {
+      type: this.type,
+      position: [this.position[0], this.position[1], this.position[2]],
+      rotation: [this.rotation[0], this.rotation[1], this.rotation[2]],
+      scale: [this.scale[0], this.scale[1], this.scale[2]]
+    };
+  }
+  toMaterialData() {
+    return {
+      color: this.material.color,
+      metallic: this.material.metallic,
+      roughness: this.material.roughness
+    };
+  }
+  destroy() {
+    this.state = ObjectState.FREE;
+    this.changeFlags = ObjectChangeFlags.NONE;
+  }
+}
+
+class ObjectPool {
+  pool;
+  freeList;
+  activeCount;
+  maxSize;
+  constructor(maxSize) {
+    this.maxSize = maxSize;
+    this.pool = new Array(maxSize).fill(null);
+    this.freeList = [];
+    this.activeCount = 0;
+    for (let i = 0; i < maxSize; i++) {
+      this.freeList.push(i);
+    }
+  }
+  acquire(config) {
+    if (this.freeList.length === 0) {
+      return null;
+    }
+    const id = this.freeList.pop();
+    const object = new SDFObject(id, config);
+    this.pool[id] = object;
+    this.activeCount++;
+    return object;
+  }
+  release(object) {
+    const id = object.getId();
+    if (id < 0 || id >= this.maxSize) {
+      throw new Error(`Invalid object ID: ${id}`);
+    }
+    if (this.pool[id] !== object) {
+      throw new Error("Object does not belong to this pool");
+    }
+    object.destroy();
+    this.pool[id] = null;
+    this.freeList.push(id);
+    this.activeCount--;
+  }
+  get(id) {
+    if (id < 0 || id >= this.maxSize) {
+      return null;
+    }
+    return this.pool[id] ?? null;
+  }
+  getActiveObjects() {
+    const active = [];
+    for (const obj of this.pool) {
+      if (obj && obj.getState() !== 0) {
+        active.push(obj);
+      }
+    }
+    return active;
+  }
+  getDirtyObjects() {
+    const dirty = [];
+    for (const obj of this.pool) {
+      if (obj && obj.isDirty()) {
+        dirty.push(obj);
+      }
+    }
+    return dirty;
+  }
+  getActiveCount() {
+    return this.activeCount;
+  }
+  getFreeCount() {
+    return this.freeList.length;
+  }
+  getMaxSize() {
+    return this.maxSize;
+  }
+  forEach(callback) {
+    for (const obj of this.pool) {
+      if (obj && obj.getState() !== 0) {
+        callback(obj);
+      }
+    }
+  }
+  forEachDirty(callback) {
+    for (const obj of this.pool) {
+      if (obj && obj.isDirty()) {
+        callback(obj);
+      }
+    }
+  }
+  clear() {
+    for (const obj of this.pool) {
+      if (obj) {
+        obj.destroy();
+      }
+    }
+    this.pool.fill(null);
+    this.freeList = [];
+    this.activeCount = 0;
+    for (let i = 0; i < this.maxSize; i++) {
+      this.freeList.push(i);
+    }
+  }
+}
+
+class ObjectManager {
+  pool;
+  bufferManager;
+  batchUpdates;
+  dirtyObjects;
+  constructor(maxObjects, bufferManager) {
+    this.pool = new ObjectPool(maxObjects);
+    this.bufferManager = bufferManager;
+    this.batchUpdates = false;
+    this.dirtyObjects = /* @__PURE__ */ new Set();
+  }
+  createObject(config) {
+    const object = this.pool.acquire(config);
+    if (!object) {
+      throw new ValidationError("Maximum object count reached");
+    }
+    if (!this.batchUpdates) {
+      this.syncObject(object);
+    } else {
+      this.dirtyObjects.add(object);
+    }
+    return object;
+  }
+  createSphere(config = {}) {
+    return this.createObject({
+      type: SDFPrimitive.Sphere,
+      ...config
+    });
+  }
+  createBox(config = {}) {
+    return this.createObject({
+      type: SDFPrimitive.Box,
+      ...config
+    });
+  }
+  createTorus(config = {}) {
+    return this.createObject({
+      type: SDFPrimitive.Torus,
+      ...config
+    });
+  }
+  createCapsule(config = {}) {
+    return this.createObject({
+      type: SDFPrimitive.Capsule,
+      ...config
+    });
+  }
+  createCylinder(config = {}) {
+    return this.createObject({
+      type: SDFPrimitive.Cylinder,
+      ...config
+    });
+  }
+  createCone(config = {}) {
+    return this.createObject({
+      type: SDFPrimitive.Cone,
+      ...config
+    });
+  }
+  destroyObject(object) {
+    this.pool.release(object);
+    this.dirtyObjects.delete(object);
+  }
+  destroyAll() {
+    this.pool.clear();
+    this.dirtyObjects.clear();
+  }
+  syncObjects() {
+    const startTime = performance.now();
+    const dirty = this.pool.getDirtyObjects();
+    if (dirty.length === 0) {
+      return;
+    }
+    const objectData = dirty.map((obj) => obj.toObjectData());
+    const materialData = dirty.map((obj) => obj.toMaterialData());
+    const objectBuffer = this.bufferManager.getBuffer("objects");
+    const materialBuffer = this.bufferManager.getBuffer("materials");
+    if (objectBuffer && materialBuffer) {
+      this.bufferManager.writeObjectBuffer(objectBuffer, objectData);
+      this.bufferManager.writeMaterialBuffer(materialBuffer, materialData);
+    }
+    dirty.forEach((obj) => obj.clearDirty());
+    this.dirtyObjects.clear();
+    this.lastSyncTime = performance.now() - startTime;
+  }
+  syncObject(object) {
+    if (!object.isDirty()) {
+      return;
+    }
+    const objectBuffer = this.bufferManager.getBuffer("objects");
+    const materialBuffer = this.bufferManager.getBuffer("materials");
+    if (objectBuffer && materialBuffer) {
+      const objectData = [object.toObjectData()];
+      const materialData = [object.toMaterialData()];
+      this.bufferManager.writeObjectBuffer(objectBuffer, objectData);
+      this.bufferManager.writeMaterialBuffer(materialBuffer, materialData);
+    }
+    object.clearDirty();
+  }
+  setBatchUpdates(enabled) {
+    this.batchUpdates = enabled;
+  }
+  getObject(id) {
+    return this.pool.get(id);
+  }
+  getAllObjects() {
+    return this.pool.getActiveObjects();
+  }
+  getObjectCount() {
+    return this.pool.getActiveCount();
+  }
+  getStats() {
+    return {
+      totalObjects: this.pool.getMaxSize(),
+      activeObjects: this.pool.getActiveCount(),
+      dirtyObjects: this.pool.getDirtyObjects().length,
+      freeSlots: this.pool.getFreeCount(),
+      lastSyncTime: this.lastSyncTime
+    };
+  }
+  lastSyncTime = 0;
+}
+
 const GPUTextureUsage = {
   DEPTH_ATTACHMENT: 128
 };
@@ -866,6 +1780,7 @@ class Engine {
   deviceManager;
   bufferManager;
   pipelineManager;
+  objectManager;
   objects;
   materials;
   uniformData;
@@ -921,6 +1836,10 @@ class Engine {
       const fragmentShader = await this.loadShader("src/shaders/raymarch.wgsl");
       await this.pipelineManager.createPipeline(vertexShader, fragmentShader);
       this.createBuffers();
+      this.objectManager = new ObjectManager(
+        this.config.maxObjects,
+        this.bufferManager
+      );
       console.log("OasisSDF Engine initialized successfully");
     } catch (error) {
       throw new EngineError(`Failed to initialize engine: ${error}`);
@@ -1052,6 +1971,7 @@ class Engine {
     const context = this.deviceManager.getContext();
     this.uniformData.time += deltaTime;
     this.uniformData.frame = this.frame++;
+    this.objectManager.syncObjects();
     this.updateBuffers();
     const texture = context.getCurrentTexture();
     const textureView = texture.createView();
@@ -1131,6 +2051,13 @@ class Engine {
     return this.pipelineManager;
   }
   /**
+   * Get object manager
+   * @returns Object manager
+   */
+  getObjectManager() {
+    return this.objectManager;
+  }
+  /**
    * Get objects
    * @returns Objects array
    */
@@ -1150,6 +2077,9 @@ class Engine {
   cleanup() {
     try {
       this.stop();
+      if (this.objectManager) {
+        this.objectManager.destroyAll();
+      }
       if (this.pipelineManager) {
         this.pipelineManager.cleanup();
       }
@@ -1164,4 +2094,169 @@ class Engine {
   }
 }
 
-export { BufferError, BufferLayout, BufferManager, DeviceManager, Engine, EngineError, OasisSDFError, PipelineError, PipelineManager, SDFPrimitive, ValidationError, WebGPUError };
+const Primitives = {
+  sphere(radius = 1, config = {}) {
+    return {
+      type: SDFPrimitive.Sphere,
+      transform: {
+        scale: [radius, radius, radius],
+        ...config.transform
+      },
+      ...config
+    };
+  },
+  box(width = 1, height = 1, depth = 1, config = {}) {
+    return {
+      type: SDFPrimitive.Box,
+      transform: {
+        scale: [width, height, depth],
+        ...config.transform
+      },
+      ...config
+    };
+  },
+  torus(majorRadius = 0.5, minorRadius = 0.2, config = {}) {
+    return {
+      type: SDFPrimitive.Torus,
+      transform: {
+        scale: [majorRadius, minorRadius, 1],
+        ...config.transform
+      },
+      ...config
+    };
+  },
+  capsule(height = 1, radius = 0.3, config = {}) {
+    return {
+      type: SDFPrimitive.Capsule,
+      transform: {
+        scale: [radius, height, radius],
+        ...config.transform
+      },
+      ...config
+    };
+  },
+  cylinder(height = 1, radius = 0.5, config = {}) {
+    return {
+      type: SDFPrimitive.Cylinder,
+      transform: {
+        scale: [radius, height, radius],
+        ...config.transform
+      },
+      ...config
+    };
+  },
+  cone(height = 1, radius = 0.5, config = {}) {
+    return {
+      type: SDFPrimitive.Cone,
+      transform: {
+        scale: [radius, height, radius],
+        ...config.transform
+      },
+      ...config
+    };
+  }
+};
+
+class Transform {
+  position;
+  rotation;
+  scale;
+  matrix;
+  matrixDirty;
+  constructor() {
+    this.position = create();
+    this.rotation = create();
+    this.scale = fromValues(1, 1, 1);
+    this.matrix = create$1();
+    this.matrixDirty = true;
+  }
+  getPosition() {
+    return clone(this.position);
+  }
+  getRotation() {
+    return clone(this.rotation);
+  }
+  getScale() {
+    return clone(this.scale);
+  }
+  getMatrix() {
+    this.updateMatrix();
+    return clone$1(this.matrix);
+  }
+  setPosition(x, y, z) {
+    if (this.position[0] !== x || this.position[1] !== y || this.position[2] !== z) {
+      set(this.position, x, y, z);
+      this.matrixDirty = true;
+    }
+  }
+  setRotation(x, y, z) {
+    if (this.rotation[0] !== x || this.rotation[1] !== y || this.rotation[2] !== z) {
+      set(this.rotation, x, y, z);
+      this.matrixDirty = true;
+    }
+  }
+  setScale(x, y, z) {
+    if (this.scale[0] !== x || this.scale[1] !== y || this.scale[2] !== z) {
+      set(this.scale, x, y, z);
+      this.matrixDirty = true;
+    }
+  }
+  translate(x, y, z) {
+    add(this.position, this.position, [x, y, z]);
+    this.matrixDirty = true;
+  }
+  rotate(x, y, z) {
+    add(this.rotation, this.rotation, [x, y, z]);
+    this.matrixDirty = true;
+  }
+  scaleBy(x, y, z) {
+    multiply(this.scale, this.scale, [x, y, z]);
+    this.matrixDirty = true;
+  }
+  lookAt(target, _up = fromValues(0, 1, 0)) {
+    const direction = create();
+    subtract(direction, target, this.position);
+    normalize(direction, direction);
+    const yaw = Math.atan2(direction[0], direction[2]);
+    const pitch = Math.asin(-direction[1]);
+    this.rotation[0] = pitch;
+    this.rotation[1] = yaw;
+    this.rotation[2] = 0;
+    this.matrixDirty = true;
+  }
+  updateMatrix() {
+    if (!this.matrixDirty) return;
+    identity(this.matrix);
+    translate(this.matrix, this.matrix, this.position);
+    rotateX(this.matrix, this.matrix, this.rotation[0]);
+    rotateY(this.matrix, this.matrix, this.rotation[1]);
+    rotateZ(this.matrix, this.matrix, this.rotation[2]);
+    scale(this.matrix, this.matrix, this.scale);
+    this.matrixDirty = false;
+  }
+  getInverseMatrix() {
+    this.updateMatrix();
+    const inverse = create$1();
+    invert(inverse, this.matrix);
+    return inverse;
+  }
+  clone() {
+    const transform = new Transform();
+    transform.copyFrom(this);
+    return transform;
+  }
+  copyFrom(other) {
+    copy(this.position, other.position);
+    copy(this.rotation, other.rotation);
+    copy(this.scale, other.scale);
+    this.matrixDirty = true;
+  }
+  reset() {
+    set(this.position, 0, 0, 0);
+    set(this.rotation, 0, 0, 0);
+    set(this.scale, 1, 1, 1);
+    this.matrixDirty = true;
+  }
+}
+
+export { BufferError, BufferLayout, BufferManager, DeviceManager, Engine, EngineError, OasisSDFError, ObjectChangeFlags, ObjectManager, ObjectPool, ObjectState, PipelineError, PipelineManager, Primitives, SDFObject, SDFPrimitive, Transform, ValidationError, WebGPUError };

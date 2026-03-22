@@ -202,3 +202,5 @@ export class EngineError extends OasisSDFError {
     super(message, 'ENGINE_ERROR');
   }
 }
+
+export * from './objects.js';

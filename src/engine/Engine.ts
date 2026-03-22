@@ -8,6 +8,7 @@
 import { DeviceManager } from './DeviceManager.js';
 import { BufferManager } from './BufferManager.js';
 import { PipelineManager } from './PipelineManager.js';
+import { ObjectManager } from '../objects/ObjectManager.js';
 import type {
   SDFObjectData,
   MaterialData,
@@ -30,6 +31,7 @@ export class Engine {
   private deviceManager: DeviceManager;
   private bufferManager!: BufferManager;
   private pipelineManager!: PipelineManager;
+  private objectManager!: ObjectManager;
   private objects: SDFObjectData[];
   private materials: MaterialData[];
   private uniformData: UniformData;
@@ -98,6 +100,12 @@ export class Engine {
 
       // Create buffers
       this.createBuffers();
+
+      // Create object manager
+      this.objectManager = new ObjectManager(
+        this.config.maxObjects!,
+        this.bufferManager
+      );
 
       console.log('OasisSDF Engine initialized successfully');
     } catch (error) {
@@ -260,6 +268,9 @@ export class Engine {
     this.uniformData.time += deltaTime;
     this.uniformData.frame = this.frame++;
 
+    // Sync objects before rendering
+    this.objectManager.syncObjects();
+
     // Update buffers
     this.updateBuffers();
 
@@ -369,6 +380,14 @@ export class Engine {
   }
 
   /**
+   * Get object manager
+   * @returns Object manager
+   */
+  getObjectManager(): ObjectManager {
+    return this.objectManager;
+  }
+
+  /**
    * Get objects
    * @returns Objects array
    */
@@ -390,12 +409,19 @@ export class Engine {
   cleanup(): void {
     try {
       this.stop();
+      
+      if (this.objectManager) {
+        this.objectManager.destroyAll();
+      }
+      
       if (this.pipelineManager) {
         this.pipelineManager.cleanup();
       }
+      
       if (this.bufferManager) {
         this.bufferManager.cleanup();
       }
+      
       this.deviceManager.cleanup();
       console.log('OasisSDF Engine cleaned up');
     } catch (error) {

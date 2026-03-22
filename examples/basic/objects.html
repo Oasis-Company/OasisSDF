@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OasisSDF - Object Management Example</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #121212;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+    .controls {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      color: white;
+      padding: 15px;
+      border-radius: 5px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+    .controls button {
+      margin: 5px;
+      padding: 5px 10px;
+      cursor: pointer;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 3px;
+    }
+    .controls button:hover {
+      background: #1976D2;
+    }
+    .controls button:active {
+      background: #0D47A1;
+    }
+    .controls button.danger {
+      background: #f44336;
+    }
+    .controls button.danger:hover {
+      background: #d32f2f;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="controls">
+    <h3>Object Management Demo</h3>
+    <p>Click buttons to add objects</p>
+    <button id="addSphere">+ Sphere</button>
+    <button id="addBox">+ Box</button>
+    <button id="addTorus">+ Torus</button>
+    <button id="addCapsule">+ Capsule</button>
+    <button id="addCylinder">+ Cylinder</button>
+    <button id="addCone">+ Cone</button>
+    <br>
+    <button id="clearAll" class="danger">Clear All</button>
+    <p id="stats">Objects: 0</p>
+  </div>
+
+  <script type="module">
+    import { Engine } from '../../dist/index.js';
+
+    const canvas = document.getElementById('canvas');
+    if (!canvas) {
+      throw new Error('Canvas element not found');
+    }
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const engine = new Engine({
+      canvas,
+      maxObjects: 100,
+      debug: true,
+      backgroundColor: [0.1, 0.1, 0.15]
+    });
+
+    let objectManager;
+
+    async function init() {
+      try {
+        await engine.initialize();
+        console.log('Engine initialized successfully');
+
+        objectManager = engine.getObjectManager();
+
+        for (let i = 0; i < 5; i++) {
+          addRandomObject();
+        }
+
+        engine.start();
+        updateStats();
+
+        addEventListeners();
+      } catch (error) {
+        console.error('Error initializing engine:', error);
+      }
+    }
+
+    function addRandomObject() {
+      const types = ['createSphere', 'createBox', 'createTorus', 'createCapsule', 'createCylinder', 'createCone'];
+      const method = types[Math.floor(Math.random() * types.length)];
+      
+      const obj = objectManager[method]({
+        transform: {
+          position: [
+            (Math.random() - 0.5) * 6,
+            (Math.random() - 0.5) * 4,
+            (Math.random() - 0.5) * 2
+          ],
+          rotation: [
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2,
+            Math.random() * Math.PI * 2
+          ],
+          scale: [
+            0.5 + Math.random() * 0.5,
+            0.5 + Math.random() * 0.5,
+            0.5 + Math.random() * 0.5
+          ]
+        },
+        material: {
+          color: [Math.random(), Math.random(), Math.random()],
+          metallic: Math.random(),
+          roughness: Math.random()
+        }
+      });
+      
+      return obj;
+    }
+
+    function addEventListeners() {
+      document.getElementById('addSphere').onclick = () => {
+        const obj = objectManager.createSphere({
+          transform: {
+            position: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 4, 0]
+          }
+        });
+        obj.setColor(Math.random(), Math.random(), Math.random());
+        updateStats();
+      };
+
+      document.getElementById('addBox').onclick = () => {
+        const obj = objectManager.createBox({
+          transform: {
+            position: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 4, 0]
+          }
+        });
+        updateStats();
+      };
+
+      document.getElementById('addTorus').onclick = () => {
+        const obj = objectManager.createTorus({
+          transform: {
+            position: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 4, 0]
+          }
+        });
+        updateStats();
+      };
+
+      document.getElementById('addCapsule').onclick = () => {
+        const obj = objectManager.createCapsule({
+          transform: {
+            position: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 4, 0]
+          }
+        });
+        updateStats();
+      };
+
+      document.getElementById('addCylinder').onclick = () => {
+        const obj = objectManager.createCylinder({
+          transform: {
+            position: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 4, 0]
+          }
+        });
+        updateStats();
+      };
+
+      document.getElementById('addCone').onclick = () => {
+        const obj = objectManager.createCone({
+          transform: {
+            position: [(Math.random() - 0.5) * 6, (Math.random() - 0.5) * 4, 0]
+          }
+        });
+        updateStats();
+      };
+
+      document.getElementById('clearAll').onclick = () => {
+        objectManager.destroyAll();
+        updateStats();
+      };
+
+      window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        engine.resize(window.innerWidth, window.innerHeight);
+      });
+
+      let isDragging = false;
+      let lastX = 0;
+      let lastY = 0;
+
+      canvas.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        lastX = e.clientX;
+        lastY = e.clientY;
+      });
+
+      canvas.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+          const deltaX = e.clientX - lastX;
+          const deltaY = e.clientY - lastY;
+          lastX = e.clientX;
+          lastY = e.clientY;
+
+          const camera = engine.getCamera();
+          const sensitivity = 0.01;
+
+          const radius = Math.sqrt(
+            camera.position[0] * camera.position[0] +
+            camera.position[2] * camera.position[2]
+          );
+
+          const theta = Math.atan2(camera.position[0], camera.position[2]) + deltaX * sensitivity;
+          const phi = Math.atan2(
+            Math.sqrt(camera.position[0] * camera.position[0] + camera.position[2] * camera.position[2]),
+            camera.position[1]
+          ) - deltaY * sensitivity;
+
+          const newX = radius * Math.sin(theta) * Math.sin(phi);
+          const newY = radius * Math.cos(phi);
+          const newZ = radius * Math.cos(theta) * Math.sin(phi);
+
+          engine.updateCamera({
+            position: [newX, newY, newZ]
+          });
+        }
+      });
+
+      canvas.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+
+      canvas.addEventListener('mouseleave', () => {
+        isDragging = false;
+      });
+    }
+
+    function updateStats() {
+      const stats = objectManager.getStats();
+      document.getElementById('stats').textContent = 
+        `Objects: ${stats.activeObjects} / ${stats.totalObjects} | Dirty: ${stats.dirtyObjects} | Free: ${stats.freeSlots}`;
+    }
+
+    init();
+  </script>
+</body>
+</html>
