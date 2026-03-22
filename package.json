@@ -1,0 +1,62 @@
+{
+  "name": "oasissdf",
+  "version": "0.1.0-alpha",
+  "description": "High-performance, data-driven WebGPU SDF engine for the next generation web",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "lint": "eslint src --ext .ts,.tsx",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.html\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"examples/**/*.html\""
+  },
+  "keywords": [
+    "webgpu",
+    "sdf",
+    "raymarching",
+    "3d",
+    "graphics",
+    "rendering",
+    "procedural",
+    "gpu",
+    "performance"
+  ],
+  "author": "Oasis Company",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/oasiscompany/OasisSDF.git"
+  },
+  "bugs": {
+    "url": "https://github.com/oasiscompany/OasisSDF/issues"
+  },
+  "homepage": "https://github.com/oasiscompany/OasisSDF#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "@vitest/ui": "^1.0.0",
+    "eslint": "^8.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "dependencies": {}
+}
