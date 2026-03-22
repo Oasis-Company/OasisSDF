@@ -1,2 +1,93 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# =============================================================================
+# WebGPU / Graphics Files
+# =============================================================================
+
+# Shader files - always use LF
+*.wgsl text eol=lf
+*.glsl text eol=lf
+*.vert text eol=lf
+*.frag text eol=lf
+*.geom text eol=lf
+*.tesc text eol=lf
+*.tese text eol=lf
+*.comp text eol=lf
+
+# Binary texture files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.bmp binary
+*.webp binary
+*.tga binary
+*.hdr binary
+*.psd binary
+*.ktx binary
+*.dds binary
+
+# 3D model files
+*.gltf text eol=lf
+*.glb binary
+*.obj text eol=lf
+*.mtl text eol=lf
+*.fbx binary
+
+# Compiled shader binaries
+*.spv binary
+*.wasm binary
+
+# Font files
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.eot binary
+
+# =============================================================================
+# Source Code Files
+# =============================================================================
+
+# JavaScript / TypeScript
+*.js text eol=lf
+*.ts text eol=lf
+*.jsx text eol=lf
+*.tsx text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+
+# Configuration files
+*.json text eol=lf
+*.jsonc text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+*.xml text eol=lf
+
+# Markdown documentation
+*.md text eol=lf
+
+# =============================================================================
+# Build / Generated Files
+# =============================================================================
+
+# Minified files (often binary-like)
+*.min.js binary
+*.min.css binary
+
+# Archives
+*.zip binary
+*.tar binary
+*.gz binary
+*.7z binary
+*.rar binary
+
+# =============================================================================
+# Git LFS candidates (optional, for future use)
+# =============================================================================
+# Uncomment if using Git LFS for large assets
+# *.psv filter=lfs diff=lfs merge=lfs -text
+# *.ktx filter=lfs diff=lfs merge=lfs -text
+# *.dds filter=lfs diff=lfs merge=lfs -text
