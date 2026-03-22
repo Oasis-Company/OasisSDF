@@ -10,16 +10,32 @@ import { DeviceManager, WebGPUError } from '../../src/engine/DeviceManager';
 describe('DeviceManager', () => {
   let canvas: HTMLCanvasElement;
   let manager: DeviceManager;
+  let originalGpu: any;
 
   beforeEach(() => {
-    canvas = document.createElement('canvas');
-    canvas.width = 800;
-    canvas.height = 600;
+    originalGpu = (navigator as any).gpu;
+    
+    if (typeof document !== 'undefined') {
+      canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 600;
+    }
+    
     manager = new DeviceManager();
   });
 
   afterEach(() => {
-    manager.cleanup();
+    try {
+      if (manager) {
+        manager.cleanup();
+      }
+    } catch (error) {
+      // Ignore cleanup errors
+    }
+    
+    if (originalGpu !== (navigator as any).gpu) {
+      (navigator as any).gpu = originalGpu;
+    }
   });
 
   describe('isSupported', () => {
@@ -30,7 +46,6 @@ describe('DeviceManager', () => {
     });
 
     it('should return false when WebGPU is not available', () => {
-      const originalGpu = (navigator as any).gpu;
       (navigator as any).gpu = undefined;
 
       expect(DeviceManager.isSupported()).toBe(false);
@@ -50,7 +65,6 @@ describe('DeviceManager', () => {
 
   describe('getSupportInfo', () => {
     it('should return unsupported info when WebGPU is not available', async () => {
-      const originalGpu = (navigator as any).gpu;
       (navigator as any).gpu = undefined;
 
       const info = await DeviceManager.getSupportInfo();
@@ -85,6 +99,7 @@ describe('DeviceManager', () => {
       expect(info.reason).toContain('Failed to query adapter');
 
       (navigator.gpu as any).requestAdapter = originalRequestAdapter;
+      (navigator as any).gpu = originalGpu;
     });
   });
 
@@ -99,7 +114,6 @@ describe('DeviceManager', () => {
     });
 
     it('should throw WebGPUError on unsupported browsers', async () => {
-      const originalGpu = (navigator as any).gpu;
       (navigator as any).gpu = undefined;
 
       await expect(manager.initialize(canvas)).rejects.toThrow(WebGPUError);
@@ -154,6 +168,7 @@ describe('DeviceManager', () => {
       expect(manager.isReady()).toBe(false);
 
       (navigator.gpu as any).requestAdapter = originalRequestAdapter;
+      (navigator as any).gpu = originalGpu;
     });
   });
 

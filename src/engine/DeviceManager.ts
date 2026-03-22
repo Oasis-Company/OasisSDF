@@ -360,10 +360,16 @@ export class DeviceManager {
       throw new WebGPUError('Canvas not available for reinitialization');
     }
 
-    this.cleanup();
-    await this.initialize(this.canvas, this.options);
+    const savedCanvas = this.canvas;
+    const savedOptions = this.options;
 
-    // Call user callback if provided
+    this.cleanup();
+
+    this.canvas = savedCanvas;
+    this.options = savedOptions;
+
+    await this.initialize(savedCanvas, savedOptions);
+
     if (this.options?.onDeviceRestored) {
       this.options.onDeviceRestored();
     }
@@ -428,6 +434,8 @@ export class DeviceManager {
   getMemoryInfo(): MemoryInfo {
     // WebGPU doesn't provide direct memory usage APIs
     // This is a placeholder for future implementation
+    // TODO: Implement actual memory tracking in BufferManager
+    // Returns zero values until memory tracking is implemented
     return {
       used: 0,
       allocated: 0,
@@ -438,9 +446,13 @@ export class DeviceManager {
    * Cleanup resources
    */
   cleanup(): void {
-    if (this.device) {
-      this.device.destroy();
-      this.device = null;
+    try {
+      if (this.device) {
+        this.device.destroy();
+        this.device = null;
+      }
+    } catch (error) {
+      console.warn('Error destroying device:', error);
     }
 
     this.context = null;
