@@ -1,169 +1,228 @@
 /**
  * Transform.test.ts
  * 
- * Unit tests for Transform class
+ * Unit tests for transform system
  */
 
-import { describe, it, expect } from 'vitest';
-import { Transform } from '../../src/math/Transform.js';
-import { vec3 } from 'gl-matrix';
+import { Matrix4 } from '../../src/math/Matrix4.js';
+import { TransformHierarchy } from '../../src/math/TransformHierarchy.js';
+import type { TransformData } from '../../src/types/objects.js';
 
-describe('Transform', () => {
-  it('should create transform with default values', () => {
-    const transform = new Transform();
-    
-    const position = transform.getPosition();
-    const rotation = transform.getRotation();
-    const scale = transform.getScale();
-    
-    expect(position[0]).toBe(0);
-    expect(position[1]).toBe(0);
-    expect(position[2]).toBe(0);
-    expect(rotation[0]).toBe(0);
-    expect(rotation[1]).toBe(0);
-    expect(rotation[2]).toBe(0);
-    expect(scale[0]).toBe(1);
-    expect(scale[1]).toBe(1);
-    expect(scale[2]).toBe(1);
+describe('Transform System', () => {
+  describe('Matrix4', () => {
+    it('should create identity matrix', () => {
+      const matrix = Matrix4.identity();
+      expect(matrix.data).toEqual(new Float32Array([
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+      ]));
+    });
+
+    it('should create translation matrix', () => {
+      const matrix = Matrix4.translation(1, 2, 3);
+      expect(matrix.data[12]).toBe(1);
+      expect(matrix.data[13]).toBe(2);
+      expect(matrix.data[14]).toBe(3);
+    });
+
+    it('should create rotation matrix', () => {
+      const matrix = Matrix4.rotation(Math.PI / 2, 0, 0);
+      // Check if rotation around X-axis is correct
+      expect(matrix.data[5]).toBeCloseTo(0);
+      expect(matrix.data[6]).toBeCloseTo(-1);
+      expect(matrix.data[9]).toBeCloseTo(1);
+      expect(matrix.data[10]).toBeCloseTo(0);
+    });
+
+    it('should create scale matrix', () => {
+      const matrix = Matrix4.scale(2, 3, 4);
+      expect(matrix.data[0]).toBe(2);
+      expect(matrix.data[5]).toBe(3);
+      expect(matrix.data[10]).toBe(4);
+    });
+
+    it('should multiply matrices', () => {
+      const mat1 = Matrix4.translation(1, 2, 3);
+      const mat2 = Matrix4.scale(2, 2, 2);
+      const result = mat1.multiply(mat2);
+      expect(result.data[12]).toBe(1);
+      expect(result.data[13]).toBe(2);
+      expect(result.data[14]).toBe(3);
+      expect(result.data[0]).toBe(2);
+      expect(result.data[5]).toBe(2);
+      expect(result.data[10]).toBe(2);
+    });
+
+    it('should transform point', () => {
+      const matrix = Matrix4.translation(1, 2, 3);
+      const point = [1, 1, 1];
+      const result = matrix.transformPoint(point);
+      expect(result).toEqual([2, 3, 4]);
+    });
+
+    it('should transform vector', () => {
+      const matrix = Matrix4.scale(2, 2, 2);
+      const vector = [1, 1, 1];
+      const result = matrix.transformVector(vector);
+      expect(result).toEqual([2, 2, 2]);
+    });
+
+    it('should calculate inverse matrix', () => {
+      const matrix = Matrix4.translation(1, 2, 3);
+      const inverse = matrix.inverse();
+      const point = [1, 1, 1];
+      const transformed = matrix.transformPoint(point);
+      const inversed = inverse.transformPoint(transformed);
+      expect(inversed).toEqual(point);
+    });
   });
 
-  it('should set position', () => {
-    const transform = new Transform();
-    transform.setPosition(1, 2, 3);
-    
-    const position = transform.getPosition();
-    expect(position[0]).toBe(1);
-    expect(position[1]).toBe(2);
-    expect(position[2]).toBe(3);
-  });
+  describe('TransformHierarchy', () => {
+    it('should create transform with parent-child relationship', () => {
+      const hierarchy = new TransformHierarchy();
+      
+      const parent: TransformData = {
+        position: [1, 2, 3],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      const child: TransformData = {
+        position: [0, 1, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      hierarchy.addChild(parent, child);
+      
+      const worldPos = hierarchy.localToWorld(child, [0, 0, 0]);
+      expect(worldPos).toEqual([1, 3, 3]);
+    });
 
-  it('should set rotation', () => {
-    const transform = new Transform();
-    transform.setRotation(0.5, 0.5, 0.5);
-    
-    const rotation = transform.getRotation();
-    expect(rotation[0]).toBe(0.5);
-    expect(rotation[1]).toBe(0.5);
-    expect(rotation[2]).toBe(0.5);
-  });
+    it('should convert local to world space', () => {
+      const hierarchy = new TransformHierarchy();
+      
+      const parent: TransformData = {
+        position: [10, 20, 30],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      const child: TransformData = {
+        position: [1, 2, 3],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      hierarchy.addChild(parent, child);
+      
+      const worldPos = hierarchy.localToWorld(child, [2, 3, 4]);
+      expect(worldPos).toEqual([13, 25, 37]);
+    });
 
-  it('should set scale', () => {
-    const transform = new Transform();
-    transform.setScale(2, 2, 2);
-    
-    const scale = transform.getScale();
-    expect(scale[0]).toBe(2);
-    expect(scale[1]).toBe(2);
-    expect(scale[2]).toBe(2);
-  });
+    it('should convert world to local space', () => {
+      const hierarchy = new TransformHierarchy();
+      
+      const parent: TransformData = {
+        position: [10, 20, 30],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      const child: TransformData = {
+        position: [1, 2, 3],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      hierarchy.addChild(parent, child);
+      
+      const localPos = hierarchy.worldToLocal(child, [13, 25, 37]);
+      expect(localPos).toEqual([2, 3, 4]);
+    });
 
-  it('should translate', () => {
-    const transform = new Transform();
-    transform.translate(1, 2, 3);
-    
-    const position = transform.getPosition();
-    expect(position[0]).toBe(1);
-    expect(position[1]).toBe(2);
-    expect(position[2]).toBe(3);
-  });
+    it('should handle transform composition', () => {
+      const hierarchy = new TransformHierarchy();
+      
+      const parent: TransformData = {
+        position: [1, 0, 0],
+        rotation: [0, Math.PI / 2, 0], // 90 degrees around Y
+        scale: [2, 2, 2]
+      };
+      
+      const child: TransformData = {
+        position: [1, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      hierarchy.addChild(parent, child);
+      
+      const worldPos = hierarchy.localToWorld(child, [0, 0, 0]);
+      // Parent translation + rotated child position * scale
+      expect(worldPos[0]).toBeCloseTo(1);
+      expect(worldPos[1]).toBeCloseTo(0);
+      expect(worldPos[2]).toBeCloseTo(2);
+    });
 
-  it('should rotate', () => {
-    const transform = new Transform();
-    transform.rotate(0.5, 0.5, 0.5);
-    
-    const rotation = transform.getRotation();
-    expect(rotation[0]).toBe(0.5);
-    expect(rotation[1]).toBe(0.5);
-    expect(rotation[2]).toBe(0.5);
-  });
+    it('should handle dirty flag system', () => {
+      const hierarchy = new TransformHierarchy();
+      
+      const parent: TransformData = {
+        position: [1, 2, 3],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      const child: TransformData = {
+        position: [0, 1, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      hierarchy.addChild(parent, child);
+      
+      // Get initial world position
+      const initialPos = hierarchy.localToWorld(child, [0, 0, 0]);
+      expect(initialPos).toEqual([1, 3, 3]);
+      
+      // Update parent position
+      parent.position = [2, 3, 4];
+      (parent as any).isDirty = true;
+      
+      // Get updated world position
+      const updatedPos = hierarchy.localToWorld(child, [0, 0, 0]);
+      expect(updatedPos).toEqual([2, 4, 4]);
+    });
 
-  it('should scale by', () => {
-    const transform = new Transform();
-    transform.scaleBy(2, 2, 2);
-    
-    const scale = transform.getScale();
-    expect(scale[0]).toBe(2);
-    expect(scale[1]).toBe(2);
-    expect(scale[2]).toBe(2);
-  });
-
-  it('should look at target', () => {
-    const transform = new Transform();
-    transform.setPosition(0, 0, 5);
-    transform.lookAt(vec3.fromValues(0, 0, 0));
-    
-    const rotation = transform.getRotation();
-    expect(rotation[1]).toBeCloseTo(Math.PI, 0.1);
-    expect(rotation[0]).toBeCloseTo(0, 0.1);
-  });
-
-  it('should get matrix', () => {
-    const transform = new Transform();
-    transform.setPosition(1, 2, 3);
-    
-    const matrix = transform.getMatrix();
-    expect(matrix).toBeDefined();
-    expect(matrix.length).toBe(16);
-  });
-
-  it('should get inverse matrix', () => {
-    const transform = new Transform();
-    transform.setPosition(1, 2, 3);
-    
-    const matrix = transform.getMatrix();
-    const inverse = transform.getInverseMatrix();
-    
-    expect(inverse).toBeDefined();
-    expect(inverse.length).toBe(16);
-  });
-
-  it('should clone transform', () => {
-    const transform = new Transform();
-    transform.setPosition(1, 2, 3);
-    transform.setRotation(0.5, 0.5, 0.5);
-    transform.setScale(2, 2, 2);
-    
-    const clone = transform.clone();
-    
-    expect(clone.getPosition()).toEqual(transform.getPosition());
-    expect(clone.getRotation()).toEqual(transform.getRotation());
-    expect(clone.getScale()).toEqual(transform.getScale());
-  });
-
-  it('should copy from another transform', () => {
-    const transform1 = new Transform();
-    transform1.setPosition(1, 2, 3);
-    transform1.setRotation(0.5, 0.5, 0.5);
-    transform1.setScale(2, 2, 2);
-    
-    const transform2 = new Transform();
-    transform2.copyFrom(transform1);
-    
-    expect(transform2.getPosition()).toEqual(transform1.getPosition());
-    expect(transform2.getRotation()).toEqual(transform1.getRotation());
-    expect(transform2.getScale()).toEqual(transform1.getScale());
-  });
-
-  it('should reset transform', () => {
-    const transform = new Transform();
-    transform.setPosition(1, 2, 3);
-    transform.setRotation(0.5, 0.5, 0.5);
-    transform.setScale(2, 2, 2);
-    
-    transform.reset();
-    
-    const position = transform.getPosition();
-    const rotation = transform.getRotation();
-    const scale = transform.getScale();
-    
-    expect(position[0]).toBe(0);
-    expect(position[1]).toBe(0);
-    expect(position[2]).toBe(0);
-    expect(rotation[0]).toBe(0);
-    expect(rotation[1]).toBe(0);
-    expect(rotation[2]).toBe(0);
-    expect(scale[0]).toBe(1);
-    expect(scale[1]).toBe(1);
-    expect(scale[2]).toBe(1);
+    it('should handle complex hierarchy', () => {
+      const hierarchy = new TransformHierarchy();
+      
+      const grandparent: TransformData = {
+        position: [10, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      const parent: TransformData = {
+        position: [1, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      const child: TransformData = {
+        position: [0.5, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+      
+      hierarchy.addChild(grandparent, parent);
+      hierarchy.addChild(parent, child);
+      
+      const worldPos = hierarchy.localToWorld(child, [0, 0, 0]);
+      expect(worldPos).toEqual([11.5, 0, 0]);
+    });
   });
 });
