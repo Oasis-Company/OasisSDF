@@ -25,3 +25,22 @@ export { Primitives } from './objects/Primitives.js';
 
 // Export math utilities
 export { Transform } from './math/Transform.js';
+
+// Export utilities
+export {
+  PerformanceProfiler,
+  type PerformanceMetrics,
+  type PerformanceStatistics,
+  type ProfilerConfig,
+  MemoryProfiler,
+  type MemorySnapshot,
+  type BufferAllocation,
+  type MemoryProfilerConfig,
+  type MemoryStatistics,
+  BrowserSupport,
+  type BrowserInfo,
+  type CompatibilityResult,
+  isWebGPUAvailable,
+  getBrowserName,
+  getBrowserVersion
+} from './utils/index.js';
