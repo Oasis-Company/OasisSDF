@@ -329,4 +329,104 @@ describe('Engine', () => {
       }).not.toThrow();
     });
   });
+
+  describe('Scene Management', () => {
+    it('should create a new scene', async () => {
+      if (!engine) return;
+
+      // Skip if WebGPU is not supported
+      if (!navigator.gpu) return;
+
+      await engine.initialize();
+
+      const scene = engine.createScene('testScene');
+      expect(scene).toBeDefined();
+      expect(engine.getScene('testScene')).toBe(scene);
+    });
+
+    it('should set active scene', async () => {
+      if (!engine) return;
+
+      // Skip if WebGPU is not supported
+      if (!navigator.gpu) return;
+
+      await engine.initialize();
+
+      const scene1 = engine.createScene('scene1');
+      const scene2 = engine.createScene('scene2');
+
+      // Set scene2 as active
+      const result = engine.setActiveScene('scene2');
+      expect(result).toBe(true);
+      expect(engine.getActiveScene()).toBe(scene2);
+    });
+
+    it('should get all scenes', async () => {
+      if (!engine) return;
+
+      // Skip if WebGPU is not supported
+      if (!navigator.gpu) return;
+
+      await engine.initialize();
+
+      engine.createScene('scene1');
+      engine.createScene('scene2');
+
+      const scenes = engine.getScenes();
+      expect(scenes.size).toBeGreaterThanOrEqual(2); // Includes default scene
+    });
+
+    it('should remove scene', async () => {
+      if (!engine) return;
+
+      // Skip if WebGPU is not supported
+      if (!navigator.gpu) return;
+
+      await engine.initialize();
+
+      engine.createScene('scene1');
+      expect(engine.getScene('scene1')).toBeDefined();
+
+      const result = engine.removeScene('scene1');
+      expect(result).toBe(true);
+      expect(engine.getScene('scene1')).toBeNull();
+    });
+
+    it('should throw error when removing default scene', async () => {
+      if (!engine) return;
+
+      // Skip if WebGPU is not supported
+      if (!navigator.gpu) return;
+
+      await engine.initialize();
+
+      expect(() => {
+        engine.removeScene('default');
+      }).toThrow(ValidationError);
+    });
+
+    it('should handle scene operations through engine', async () => {
+      if (!engine) return;
+
+      // Skip if WebGPU is not supported
+      if (!navigator.gpu) return;
+
+      await engine.initialize();
+
+      // Add object through engine
+      const object: SDFObjectData = {
+        type: 1,
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1]
+      };
+
+      const index = engine.addObject(object);
+      expect(index).toBe(0);
+
+      // Get objects from active scene
+      const activeScene = engine.getActiveScene();
+      expect(activeScene.getObjectCount()).toBe(1);
+    });
+  });
 });

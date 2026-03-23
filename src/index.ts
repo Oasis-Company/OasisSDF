@@ -12,6 +12,10 @@ export { Engine } from './engine/Engine.js';
 export { DeviceManager, type DeviceManagerOptions, type WebGPUSupportInfo } from './engine/DeviceManager.js';
 export { BufferManager } from './engine/BufferManager.js';
 export { PipelineManager, type PipelineConfig } from './engine/PipelineManager.js';
+export { LightManager } from './engine/LightManager.js';
+
+// Export scene management
+export { Scene, type SceneConfig, type SceneRenderData, type SceneOptions } from './scene/index.js';
 
 // Export object management
 export { SDFObject } from './objects/SDFObject.js';

@@ -17,6 +17,11 @@ new Engine(config: EngineConfig)
   - `maxObjects` (optional): number - Maximum number of objects (default: 10000)
   - `debug` (optional): boolean - Enable debug mode (default: false)
   - `backgroundColor` (optional): [number, number, number] - Background color (default: [0, 0, 0])
+  - `sceneConfig` (optional): SceneConfig - Default scene configuration
+    - `maxObjects` (optional): number - Maximum objects in default scene
+    - `maxLights` (optional): number - Maximum lights in default scene
+    - `camera` (optional): CameraData - Default camera configuration
+    - `ambientLight` (optional): [number, number, number] - Default ambient light
 
 ### Example
 
@@ -155,6 +160,77 @@ Gets the pipeline manager instance.
 ### cleanup(): void
 
 Cleans up all resources.
+
+## Scene Management Methods
+
+### createScene(name: string, config?: SceneConfig): Scene
+
+Creates a new scene with the specified name and configuration.
+
+#### Parameters
+
+- `name`: string - Scene name
+- `config` (optional): SceneConfig - Scene configuration
+  - `maxObjects` (optional): number - Maximum objects in scene
+  - `maxLights` (optional): number - Maximum lights in scene
+  - `camera` (optional): CameraData - Camera configuration
+  - `ambientLight` (optional): [number, number, number] - Ambient light
+
+#### Returns
+
+- Scene: The created scene instance
+
+### setActiveScene(name: string): boolean
+
+Sets the active scene by name.
+
+#### Parameters
+
+- `name`: string - Scene name
+
+#### Returns
+
+- boolean: True if the scene was found and set as active
+
+### getActiveScene(): Scene
+
+Gets the currently active scene.
+
+#### Returns
+
+- Scene: The active scene
+
+### getScene(name: string): Scene | null
+
+Gets a scene by name.
+
+#### Parameters
+
+- `name`: string - Scene name
+
+#### Returns
+
+- Scene | null: The scene if found, null otherwise
+
+### getScenes(): Map<string, Scene>
+
+Gets all scenes managed by the engine.
+
+#### Returns
+
+- Map<string, Scene>: Map of scene names to scene instances
+
+### removeScene(name: string): boolean
+
+Removes a scene by name.
+
+#### Parameters
+
+- `name`: string - Scene name
+
+#### Returns
+
+- boolean: True if the scene was removed (cannot remove default scene)
 
 ## Examples
 

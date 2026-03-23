@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scene Management Example - OasisSDF</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background-color: #121212;
+      color: #ffffff;
+    }
+    
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+    
+    .controls {
+      width: 300px;
+      padding: 20px;
+      background-color: #1e1e1e;
+      border-right: 1px solid #333;
+      overflow-y: auto;
+    }
+    
+    .canvas-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    canvas {
+      border: 1px solid #333;
+      background-color: #000;
+    }
+    
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+    }
+    
+    h2 {
+      font-size: 1.2rem;
+      margin: 20px 0 10px;
+      color: #00ffaa;
+    }
+    
+    .button {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      background-color: #333;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    
+    .button:hover {
+      background-color: #444;
+    }
+    
+    .button.active {
+      background-color: #00ffaa;
+      color: #000;
+    }
+    
+    .info {
+      margin: 10px 0;
+      padding: 10px;
+      background-color: #2a2a2a;
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+    
+    .scene-list {
+      margin: 10px 0;
+    }
+    
+    .scene-item {
+      padding: 8px;
+      margin: 3px 0;
+      background-color: #2a2a2a;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    
+    .scene-item.active {
+      background-color: #00ffaa;
+      color: #000;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="controls">
+      <h1>Scene Management Example</h1>
+      
+      <h2>Scenes</h2>
+      <button class="button" id="createScene">Create New Scene</button>
+      <div class="scene-list" id="sceneList"></div>
+      
+      <h2>Objects</h2>
+      <button class="button" id="addSphere">Add Sphere</button>
+      <button class="button" id="addBox">Add Box</button>
+      <button class="button" id="addTorus">Add Torus</button>
+      <button class="button" id="clearObjects">Clear Objects</button>
+      
+      <h2>Lighting</h2>
+      <button class="button" id="addDirectionalLight">Add Directional Light</button>
+      <button class="button" id="addPointLight">Add Point Light</button>
+      <button class="button" id="clearLights">Clear Lights</button>
+      
+      <h2>Camera</h2>
+      <button class="button" id="resetCamera">Reset Camera</button>
+      
+      <div class="info" id="info">
+        <div>Active Scene: <span id="activeSceneName">default</span></div>
+        <div>Objects: <span id="objectCount">0</span></div>
+        <div>Lights: <span id="lightCount">0</span></div>
+      </div>
+    </div>
+    
+    <div class="canvas-container">
+      <canvas id="canvas" width="800" height="600"></canvas>
+    </div>
+  </div>
+
+  <script type="module">
+    import { Engine, SDFPrimitive } from '../src/index.js';
+
+    // Initialize engine
+    const canvas = document.getElementById('canvas');
+    const engine = new Engine({
+      canvas,
+      maxObjects: 100,
+      maxLights: 10,
+      backgroundColor: [0.1, 0.1, 0.1]
+    });
+
+    // DOM elements
+    const createSceneBtn = document.getElementById('createScene');
+    const sceneList = document.getElementById('sceneList');
+    const addSphereBtn = document.getElementById('addSphere');
+    const addBoxBtn = document.getElementById('addBox');
+    const addTorusBtn = document.getElementById('addTorus');
+    const clearObjectsBtn = document.getElementById('clearObjects');
+    const addDirectionalLightBtn = document.getElementById('addDirectionalLight');
+    const addPointLightBtn = document.getElementById('addPointLight');
+    const clearLightsBtn = document.getElementById('clearLights');
+    const resetCameraBtn = document.getElementById('resetCamera');
+    const activeSceneNameEl = document.getElementById('activeSceneName');
+    const objectCountEl = document.getElementById('objectCount');
+    const lightCountEl = document.getElementById('lightCount');
+
+    // Initialize engine
+    async function init() {
+      try {
+        await engine.initialize();
+        console.log('Engine initialized successfully');
+        updateSceneList();
+        updateInfo();
+        engine.start();
+      } catch (error) {
+        console.error('Engine initialization failed:', error);
+      }
+    }
+
+    // Update scene list
+    function updateSceneList() {
+      sceneList.innerHTML = '';
+      const scenes = engine.getScenes();
+      const activeScene = engine.getActiveScene();
+      
+      scenes.forEach((scene, name) => {
+        const sceneItem = document.createElement('div');
+        sceneItem.className = 'scene-item' + (scene === activeScene ? ' active' : '');
+        sceneItem.textContent = name;
+        sceneItem.addEventListener('click', () => {
+          engine.setActiveScene(name);
+          updateSceneList();
+          updateInfo();
+        });
+        sceneList.appendChild(sceneItem);
+      });
+    }
+
+    // Update info display
+    function updateInfo() {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        activeSceneNameEl.textContent = engine.getScenes().entries().next().value[0];
+        objectCountEl.textContent = activeScene.getObjectCount();
+        lightCountEl.textContent = activeScene.getLightCount();
+      }
+    }
+
+    // Create new scene
+    createSceneBtn.addEventListener('click', () => {
+      const sceneName = prompt('Enter scene name:', `scene-${Date.now()}`);
+      if (sceneName) {
+        engine.createScene(sceneName);
+        updateSceneList();
+      }
+    });
+
+    // Add sphere
+    addSphereBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        const object = {
+          type: SDFPrimitive.Sphere,
+          position: [Math.random() * 4 - 2, Math.random() * 4 - 2, Math.random() * 4 - 2],
+          rotation: [0, 0, 0],
+          scale: [0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5]
+        };
+        activeScene.addObject(object);
+        updateInfo();
+      }
+    });
+
+    // Add box
+    addBoxBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        const object = {
+          type: SDFPrimitive.Box,
+          position: [Math.random() * 4 - 2, Math.random() * 4 - 2, Math.random() * 4 - 2],
+          rotation: [0, 0, 0],
+          scale: [0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5, 0.5 + Math.random() * 0.5]
+        };
+        activeScene.addObject(object);
+        updateInfo();
+      }
+    });
+
+    // Add torus
+    addTorusBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        const object = {
+          type: SDFPrimitive.Torus,
+          position: [Math.random() * 4 - 2, Math.random() * 4 - 2, Math.random() * 4 - 2],
+          rotation: [0, 0, 0],
+          scale: [0.5 + Math.random() * 0.3, 0.2 + Math.random() * 0.1, 1]
+        };
+        activeScene.addObject(object);
+        updateInfo();
+      }
+    });
+
+    // Clear objects
+    clearObjectsBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        activeScene.clearObjects();
+        updateInfo();
+      }
+    });
+
+    // Add directional light
+    addDirectionalLightBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        activeScene.addLight({
+          type: 0, // Directional light
+          direction: [Math.random() * 2 - 1, Math.random() * 2 - 1, Math.random() * 2 - 1],
+          color: [1, 1, 1],
+          intensity: 1
+        });
+        updateInfo();
+      }
+    });
+
+    // Add point light
+    addPointLightBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        activeScene.addLight({
+          type: 1, // Point light
+          position: [Math.random() * 4 - 2, Math.random() * 4 - 2, Math.random() * 4 - 2],
+          color: [1, 0.5, 0.5],
+          intensity: 1
+        });
+        updateInfo();
+      }
+    });
+
+    // Clear lights
+    clearLightsBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        activeScene.clearLights();
+        updateInfo();
+      }
+    });
+
+    // Reset camera
+    resetCameraBtn.addEventListener('click', () => {
+      const activeScene = engine.getActiveScene();
+      if (activeScene) {
+        activeScene.updateCamera({
+          position: [0, 0, 5],
+          target: [0, 0, 0],
+          up: [0, 1, 0],
+          fov: Math.PI / 3,
+          near: 0.1,
+          far: 100
+        });
+      }
+    });
+
+    // Initialize
+    init();
+  </script>
+</body>
+</html>
