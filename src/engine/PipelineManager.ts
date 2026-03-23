@@ -82,7 +82,7 @@ export class PipelineManager {
    * Create bind group layouts
    */
   private createBindGroupLayouts(): void {
-    // Storage buffers layout (objects, materials)
+    // Storage buffers layout (objects, materials, lights)
     const storageLayout = this.device.createBindGroupLayout({
       entries: [
         {
@@ -94,6 +94,13 @@ export class PipelineManager {
         },
         {
           binding: 1,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: {
+            type: 'read-only-storage'
+          }
+        },
+        {
+          binding: 2,
           visibility: GPUShaderStage.FRAGMENT,
           buffer: {
             type: 'read-only-storage'
@@ -180,8 +187,9 @@ export class PipelineManager {
    * Create storage bind group
    * @param objectsBuffer - Objects buffer
    * @param materialsBuffer - Materials buffer
+   * @param lightsBuffer - Lights buffer
    */
-  createStorageBindGroup(objectsBuffer: GPUBuffer, materialsBuffer: GPUBuffer): void {
+  createStorageBindGroup(objectsBuffer: GPUBuffer, materialsBuffer: GPUBuffer, lightsBuffer: GPUBuffer): void {
     const bindGroup = this.device.createBindGroup({
       layout: this.bindGroupLayouts.get('storage')!,
       entries: [
@@ -195,6 +203,12 @@ export class PipelineManager {
           binding: 1,
           resource: {
             buffer: materialsBuffer
+          }
+        },
+        {
+          binding: 2,
+          resource: {
+            buffer: lightsBuffer
           }
         }
       ]

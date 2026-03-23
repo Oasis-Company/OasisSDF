@@ -9,6 +9,7 @@ import { DeviceManager } from './DeviceManager.js';
 import { BufferManager } from './BufferManager.js';
 import { PipelineManager } from './PipelineManager.js';
 import { ObjectManager } from '../objects/ObjectManager.js';
+import { LightManager } from './LightManager.js';
 import type {
   SDFObjectData,
   MaterialData,
@@ -16,6 +17,7 @@ import type {
   CameraData,
   EngineConfig
 } from '../types/index.js';
+import type { LightData, LightCreateInfo } from '../types/lights.js';
 import { EngineError, ValidationError } from '../types/index.js';
 
 // WebGPU constants
@@ -32,8 +34,10 @@ export class Engine {
   private bufferManager!: BufferManager;
   private pipelineManager!: PipelineManager;
   private objectManager!: ObjectManager;
+  private lightManager!: LightManager;
   private objects: SDFObjectData[];
   private materials: MaterialData[];
+  private lights: LightData[];
   private uniformData: UniformData;
   private cameraData: CameraData;
   private animationId: number | null;
@@ -50,14 +54,17 @@ export class Engine {
     this.deviceManager = new DeviceManager();
     this.objects = [];
     this.materials = [];
+    this.lights = [];
     this.uniformData = {
       time: 0,
       frame: 0,
       objectCount: 0,
+      lightCount: 0,
       resolution: [
         this.config.canvas.width,
         this.config.canvas.height
-      ]
+      ],
+      ambientLight: [0.03, 0.03, 0.03]
     };
     this.cameraData = {
       position: [0, 0, 5],
@@ -107,6 +114,9 @@ export class Engine {
         this.bufferManager
       );
 
+      // Create light manager
+      this.lightManager = new LightManager(8);
+
       console.log('OasisSDF Engine initialized successfully');
     } catch (error) {
       throw new EngineError(`Failed to initialize engine: ${error}`);
@@ -135,6 +145,7 @@ export class Engine {
    */
   private createBuffers(): void {
     const maxObjects = this.config.maxObjects!;
+    const maxLights = 8;
     
     // Create object buffer
     const objectBuffer = this.bufferManager.createStorageBuffer(
@@ -145,13 +156,19 @@ export class Engine {
     // Create material buffer
     const materialBuffer = this.bufferManager.createStorageBuffer(
       'materials',
-      maxObjects * 48 // 48 bytes per material
+      maxObjects * 64 // 64 bytes per material
+    );
+
+    // Create light buffer
+    const lightBuffer = this.bufferManager.createStorageBuffer(
+      'lights',
+      maxLights * 80 // 80 bytes per light
     );
 
     // Create uniform buffer
     const uniformBuffer = this.bufferManager.createUniformBuffer(
       'uniforms',
-      32 // 32 bytes
+      48 // 48 bytes
     );
 
     // Create camera buffer
@@ -161,7 +178,7 @@ export class Engine {
     );
 
     // Create bind groups
-    this.pipelineManager.createStorageBindGroup(objectBuffer, materialBuffer);
+    this.pipelineManager.createStorageBindGroup(objectBuffer, materialBuffer, lightBuffer);
     this.pipelineManager.createUniformBindGroup(uniformBuffer, cameraBuffer);
   }
 
@@ -179,7 +196,11 @@ export class Engine {
     this.materials.push({
       color: [1, 1, 1],
       metallic: 0.5,
-      roughness: 0.5
+      roughness: 0.5,
+      reflectance: 0.5,
+      emission: [0, 0, 0],
+      emissionIntensity: 0,
+      ambientOcclusion: 1.0
     });
 
     this.uniformData.objectCount = this.objects.length;
@@ -228,6 +249,51 @@ export class Engine {
   }
 
   /**
+   * Add light to scene
+   */
+  addLight(config: LightCreateInfo): number | null {
+    const id = this.lightManager.createLight(config);
+    if (id !== null) {
+      this.lights = this.lightManager.getAllLights();
+      this.uniformData.lightCount = this.lights.length;
+      this.updateBuffers();
+    }
+    return id;
+  }
+
+  /**
+   * Remove light from scene
+   */
+  removeLight(id: number): boolean {
+    const removed = this.lightManager.removeLight(id);
+    if (removed) {
+      this.lights = this.lightManager.getAllLights();
+      this.uniformData.lightCount = this.lights.length;
+      this.updateBuffers();
+    }
+    return removed;
+  }
+
+  /**
+   * Update light data
+   */
+  updateLight(id: number, updates: Partial<LightCreateInfo>): boolean {
+    const updated = this.lightManager.updateLight(id, updates);
+    if (updated) {
+      this.lights = this.lightManager.getAllLights();
+      this.updateBuffers();
+    }
+    return updated;
+  }
+
+  /**
+   * Get light manager
+   */
+  getLightManager(): LightManager {
+    return this.lightManager;
+  }
+
+  /**
    * Update buffers with current data
    */
   private updateBuffers(): void {
@@ -241,6 +307,12 @@ export class Engine {
     const materialBuffer = this.bufferManager.getBuffer('materials');
     if (materialBuffer) {
       this.bufferManager.writeMaterialBuffer(materialBuffer, this.materials);
+    }
+
+    // Update light buffer
+    const lightBuffer = this.bufferManager.getBuffer('lights');
+    if (lightBuffer) {
+      this.bufferManager.writeLightBuffer(lightBuffer, this.lights);
     }
 
     // Update uniform buffer

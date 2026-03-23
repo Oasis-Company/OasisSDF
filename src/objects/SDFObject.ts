@@ -47,7 +47,11 @@ export class SDFObject {
     this.material = {
       color: config.material?.color ?? [1, 1, 1],
       metallic: config.material?.metallic ?? 0.5,
-      roughness: config.material?.roughness ?? 0.5
+      roughness: config.material?.roughness ?? 0.5,
+      reflectance: config.material?.reflectance ?? 0.5,
+      emission: config.material?.emission ?? [0, 0, 0],
+      emissionIntensity: config.material?.emissionIntensity ?? 0,
+      ambientOcclusion: config.material?.ambientOcclusion ?? 1.0
     };
     
     this.visible = config.visible ?? true;
@@ -157,7 +161,11 @@ export class SDFObject {
     return {
       color: this.material.color,
       metallic: this.material.metallic,
-      roughness: this.material.roughness
+      roughness: this.material.roughness,
+      reflectance: this.material.reflectance,
+      emission: this.material.emission,
+      emissionIntensity: this.material.emissionIntensity,
+      ambientOcclusion: this.material.ambientOcclusion
     };
   }
   

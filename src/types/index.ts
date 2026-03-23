@@ -29,13 +29,18 @@ export interface SDFObjectData {
 
 /**
  * Material Data Structure
- * Total size: 48 bytes (16-byte aligned)
+ * Total size: 64 bytes (16-byte aligned)
  * Layout:
  * - color: 12 bytes
  * - padding0: 4 bytes (align to 16)
  * - metallic: 4 bytes
  * - roughness: 4 bytes
- * - padding1: 8 bytes (align to 16)
+ * - reflectance: 4 bytes
+ * - padding1: 4 bytes (align to 16)
+ * - emission: 12 bytes
+ * - emissionIntensity: 4 bytes (align to 16)
+ * - ambientOcclusion: 4 bytes
+ * - padding2: 12 bytes (align to 16)
  */
 export interface MaterialData {
   /** RGB color values (0.0 - 1.0) */
@@ -44,6 +49,14 @@ export interface MaterialData {
   metallic: number;
   /** Roughness factor (0.0 - 1.0) */
   roughness: number;
+  /** Fresnel reflectance at normal incidence for dielectrics (0.0 - 1.0) */
+  reflectance: number;
+  /** Emission color (RGB) */
+  emission: [number, number, number];
+  /** Emission intensity multiplier */
+  emissionIntensity: number;
+  /** Per-material ambient occlusion factor (0.0 - 1.0) */
+  ambientOcclusion: number;
 }
 
 /**
@@ -78,14 +91,16 @@ export interface CameraData {
 
 /**
  * Uniform Data Structure
- * Total size: 32 bytes (16-byte aligned)
+ * Total size: 48 bytes (16-byte aligned)
  * Layout:
  * - time: 4 bytes
  * - frame: 4 bytes
  * - objectCount: 4 bytes
- * - padding0: 4 bytes (align to 16)
+ * - lightCount: 4 bytes (align to 16)
  * - resolution: 8 bytes
- * - padding1: 8 bytes (align to 16)
+ * - padding0: 8 bytes (align to 16)
+ * - ambientLight: 12 bytes
+ * - padding1: 4 bytes (align to 16)
  */
 export interface UniformData {
   /** Current time in seconds */
@@ -94,8 +109,12 @@ export interface UniformData {
   frame: number;
   /** Number of active objects */
   objectCount: number;
+  /** Number of active lights */
+  lightCount: number;
   /** Canvas resolution (width, height) */
   resolution: [number, number];
+  /** Ambient light color (RGB) */
+  ambientLight: [number, number, number];
 }
 
 /**
@@ -135,17 +154,22 @@ export const BufferLayout = {
   /** Calculate byte size of SDFObjectData */
   objectSize: 64,
   /** Calculate byte size of MaterialData */
-  materialSize: 48,
+  materialSize: 64,
   /** Calculate byte size of CameraData */
   cameraSize: 80,
   /** Calculate byte size of UniformData */
-  uniformSize: 32,
+  uniformSize: 48,
+  /** Calculate byte size of LightData */
+  lightSize: 80,
 
   /** Calculate total buffer size for objects */
   objectBufferSize: (count: number): number => count * 64,
 
   /** Calculate total buffer size for materials */
-  materialBufferSize: (count: number): number => count * 48,
+  materialBufferSize: (count: number): number => count * 64,
+
+  /** Calculate total buffer size for lights */
+  lightBufferSize: (count: number): number => count * 80,
 
   /** Validate alignment (must be multiple of 16) */
   validateAlignment: (size: number): boolean => size % 16 === 0
@@ -204,3 +228,4 @@ export class EngineError extends OasisSDFError {
 }
 
 export * from './objects.js';
+export * from './lights.js';

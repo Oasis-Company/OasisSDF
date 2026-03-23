@@ -14,19 +14,61 @@ var ObjectChangeFlags = /* @__PURE__ */ ((ObjectChangeFlags2) => {
   return ObjectChangeFlags2;
 })(ObjectChangeFlags || {});
 
+var LightType = /* @__PURE__ */ ((LightType2) => {
+  LightType2[LightType2["DIRECTIONAL"] = 0] = "DIRECTIONAL";
+  LightType2[LightType2["POINT"] = 1] = "POINT";
+  LightType2[LightType2["SPOT"] = 2] = "SPOT";
+  return LightType2;
+})(LightType || {});
+const DefaultLights = {
+  directional: () => ({
+    type: 0 /* DIRECTIONAL */,
+    direction: [0.5, -0.7, -0.3],
+    color: [1, 1, 1],
+    intensity: 1,
+    castShadows: true,
+    shadowSoftness: 16
+  }),
+  point: () => ({
+    type: 1 /* POINT */,
+    position: [0, 2, 0],
+    color: [1, 1, 1],
+    intensity: 1,
+    castShadows: true,
+    shadowSoftness: 16,
+    range: 10
+  }),
+  spot: () => ({
+    type: 2 /* SPOT */,
+    position: [0, 3, 0],
+    direction: [0, -1, 0],
+    color: [1, 1, 1],
+    intensity: 1.5,
+    castShadows: true,
+    shadowSoftness: 16,
+    range: 15,
+    innerConeAngle: Math.PI / 6,
+    outerConeAngle: Math.PI / 4
+  })
+};
+
 const BufferLayout = {
   /** Calculate byte size of SDFObjectData */
   objectSize: 64,
   /** Calculate byte size of MaterialData */
-  materialSize: 48,
+  materialSize: 64,
   /** Calculate byte size of CameraData */
   cameraSize: 80,
   /** Calculate byte size of UniformData */
-  uniformSize: 32,
+  uniformSize: 48,
+  /** Calculate byte size of LightData */
+  lightSize: 80,
   /** Calculate total buffer size for objects */
   objectBufferSize: (count) => count * 64,
   /** Calculate total buffer size for materials */
-  materialBufferSize: (count) => count * 48,
+  materialBufferSize: (count) => count * 64,
+  /** Calculate total buffer size for lights */
+  lightBufferSize: (count) => count * 80,
   /** Validate alignment (must be multiple of 16) */
   validateAlignment: (size) => size % 16 === 0
 };
@@ -522,26 +564,36 @@ class BufferManager {
     this.writeBuffer(buffer, Array.from(data));
   }
   writeMaterialBuffer(buffer, materials) {
-    const totalSize = materials.length * 48;
+    const totalSize = materials.length * 64;
     const data = new Float32Array(totalSize / 4);
     for (let i = 0; i < materials.length; i++) {
       const mat = materials[i];
-      const offset = i * 12;
-      data[offset] = mat.color[0];
+      const offset = i * 16;
+      data[offset + 0] = mat.color[0];
       data[offset + 1] = mat.color[1];
       data[offset + 2] = mat.color[2];
       data[offset + 4] = mat.metallic;
       data[offset + 5] = mat.roughness;
+      data[offset + 6] = mat.reflectance;
+      data[offset + 8] = mat.emission[0];
+      data[offset + 9] = mat.emission[1];
+      data[offset + 10] = mat.emission[2];
+      data[offset + 11] = mat.emissionIntensity;
+      data[offset + 12] = mat.ambientOcclusion;
     }
     this.writeBuffer(buffer, Array.from(data));
   }
   writeUniformBuffer(buffer, data) {
-    const uniformArray = new Float32Array(8);
+    const uniformArray = new Float32Array(12);
     uniformArray[0] = data.time;
     uniformArray[1] = data.frame;
     uniformArray[2] = data.objectCount;
+    uniformArray[3] = data.lightCount;
     uniformArray[4] = data.resolution[0];
     uniformArray[5] = data.resolution[1];
+    uniformArray[8] = data.ambientLight[0];
+    uniformArray[9] = data.ambientLight[1];
+    uniformArray[10] = data.ambientLight[2];
     this.writeBuffer(buffer, Array.from(uniformArray));
   }
   writeCameraBuffer(buffer, data) {
@@ -559,6 +611,31 @@ class BufferManager {
     cameraArray[13] = data.near;
     cameraArray[14] = data.far;
     this.writeBuffer(buffer, Array.from(cameraArray));
+  }
+  writeLightBuffer(buffer, lights) {
+    const totalSize = lights.length * 80;
+    const data = new Float32Array(totalSize / 4);
+    for (let i = 0; i < lights.length; i++) {
+      const light = lights[i];
+      const offset = i * 20;
+      data[offset + 0] = light.type;
+      data[offset + 1] = light.intensity;
+      data[offset + 2] = light.castShadows;
+      data[offset + 3] = light.shadowSoftness;
+      data[offset + 4] = light.position[0];
+      data[offset + 5] = light.position[1];
+      data[offset + 6] = light.position[2];
+      data[offset + 8] = light.direction[0];
+      data[offset + 9] = light.direction[1];
+      data[offset + 10] = light.direction[2];
+      data[offset + 12] = light.color[0];
+      data[offset + 13] = light.color[1];
+      data[offset + 14] = light.color[2];
+      data[offset + 16] = light.range;
+      data[offset + 17] = light.innerConeAngle;
+      data[offset + 18] = light.outerConeAngle;
+    }
+    this.writeBuffer(buffer, Array.from(data));
   }
   getBuffer(name) {
     return this.buffers.get(name);
@@ -673,6 +750,13 @@ class PipelineManager {
           buffer: {
             type: "read-only-storage"
           }
+        },
+        {
+          binding: 2,
+          visibility: GPUShaderStage.FRAGMENT,
+          buffer: {
+            type: "read-only-storage"
+          }
         }
       ]
     });
@@ -743,8 +827,9 @@ class PipelineManager {
    * Create storage bind group
    * @param objectsBuffer - Objects buffer
    * @param materialsBuffer - Materials buffer
+   * @param lightsBuffer - Lights buffer
    */
-  createStorageBindGroup(objectsBuffer, materialsBuffer) {
+  createStorageBindGroup(objectsBuffer, materialsBuffer, lightsBuffer) {
     const bindGroup = this.device.createBindGroup({
       layout: this.bindGroupLayouts.get("storage"),
       entries: [
@@ -758,6 +843,12 @@ class PipelineManager {
           binding: 1,
           resource: {
             buffer: materialsBuffer
+          }
+        },
+        {
+          binding: 2,
+          resource: {
+            buffer: lightsBuffer
           }
         }
       ]
@@ -1450,7 +1541,11 @@ class SDFObject {
     this.material = {
       color: config.material?.color ?? [1, 1, 1],
       metallic: config.material?.metallic ?? 0.5,
-      roughness: config.material?.roughness ?? 0.5
+      roughness: config.material?.roughness ?? 0.5,
+      reflectance: config.material?.reflectance ?? 0.5,
+      emission: config.material?.emission ?? [0, 0, 0],
+      emissionIntensity: config.material?.emissionIntensity ?? 0,
+      ambientOcclusion: config.material?.ambientOcclusion ?? 1
     };
     this.visible = config.visible ?? true;
   }
@@ -1541,7 +1636,11 @@ class SDFObject {
     return {
       color: this.material.color,
       metallic: this.material.metallic,
-      roughness: this.material.roughness
+      roughness: this.material.roughness,
+      reflectance: this.material.reflectance,
+      emission: this.material.emission,
+      emissionIntensity: this.material.emissionIntensity,
+      ambientOcclusion: this.material.ambientOcclusion
     };
   }
   destroy() {
@@ -1772,6 +1871,172 @@ class ObjectManager {
   lastSyncTime = 0;
 }
 
+class LightManager {
+  lights = /* @__PURE__ */ new Map();
+  nextId = 0;
+  maxLights;
+  dirtyLights = /* @__PURE__ */ new Set();
+  constructor(maxLights = 8) {
+    this.maxLights = maxLights;
+  }
+  createLight(config) {
+    if (this.lights.size >= this.maxLights) {
+      console.warn("LightManager: Maximum light count reached");
+      return null;
+    }
+    const id = this.nextId++;
+    const lightData = {
+      type: config.type,
+      position: config.position ?? [0, 0, 0],
+      direction: config.direction ?? [0, -1, 0],
+      color: config.color ?? [1, 1, 1],
+      intensity: config.intensity ?? 1,
+      range: config.range ?? 10,
+      innerConeAngle: config.innerConeAngle ?? 0,
+      outerConeAngle: config.outerConeAngle ?? Math.PI / 4,
+      castShadows: config.castShadows ? 1 : 0,
+      shadowSoftness: config.shadowSoftness ?? 16
+    };
+    this.lights.set(id, lightData);
+    this.dirtyLights.add(id);
+    return id;
+  }
+  createDirectionalLight(config = {}) {
+    return this.createLight({
+      type: LightType.DIRECTIONAL,
+      direction: config.direction ?? [0, -1, 0],
+      color: config.color ?? [1, 1, 1],
+      intensity: config.intensity ?? 1,
+      castShadows: config.castShadows ?? true,
+      shadowSoftness: config.shadowSoftness ?? 16
+    });
+  }
+  createPointLight(config = {}) {
+    return this.createLight({
+      type: LightType.POINT,
+      position: config.position ?? [0, 0, 0],
+      color: config.color ?? [1, 1, 1],
+      intensity: config.intensity ?? 1,
+      range: config.range ?? 10,
+      castShadows: config.castShadows ?? true,
+      shadowSoftness: config.shadowSoftness ?? 16
+    });
+  }
+  createSpotLight(config = {}) {
+    return this.createLight({
+      type: LightType.SPOT,
+      position: config.position ?? [0, 0, 0],
+      direction: config.direction ?? [0, -1, 0],
+      color: config.color ?? [1, 1, 1],
+      intensity: config.intensity ?? 1,
+      range: config.range ?? 10,
+      innerConeAngle: config.innerConeAngle ?? 0,
+      outerConeAngle: config.outerConeAngle ?? Math.PI / 4,
+      castShadows: config.castShadows ?? true,
+      shadowSoftness: config.shadowSoftness ?? 16
+    });
+  }
+  updateLight(id, updates) {
+    const light = this.lights.get(id);
+    if (!light) {
+      return false;
+    }
+    if (updates.position !== void 0) {
+      light.position = updates.position;
+    }
+    if (updates.direction !== void 0) {
+      light.direction = updates.direction;
+    }
+    if (updates.color !== void 0) {
+      light.color = updates.color;
+    }
+    if (updates.intensity !== void 0) {
+      light.intensity = updates.intensity;
+    }
+    if (updates.range !== void 0) {
+      light.range = updates.range;
+    }
+    if (updates.innerConeAngle !== void 0) {
+      light.innerConeAngle = updates.innerConeAngle;
+    }
+    if (updates.outerConeAngle !== void 0) {
+      light.outerConeAngle = updates.outerConeAngle;
+    }
+    if (updates.castShadows !== void 0) {
+      light.castShadows = updates.castShadows ? 1 : 0;
+    }
+    if (updates.shadowSoftness !== void 0) {
+      light.shadowSoftness = updates.shadowSoftness;
+    }
+    this.dirtyLights.add(id);
+    return true;
+  }
+  removeLight(id) {
+    const deleted = this.lights.delete(id);
+    if (deleted) {
+      this.dirtyLights.delete(id);
+    }
+    return deleted;
+  }
+  getLight(id) {
+    return this.lights.get(id) ?? null;
+  }
+  getAllLights() {
+    return Array.from(this.lights.values());
+  }
+  getLightCount() {
+    return this.lights.size;
+  }
+  getDirtyLights() {
+    return Array.from(this.dirtyLights);
+  }
+  clearDirtyFlags() {
+    this.dirtyLights.clear();
+  }
+  isDirty() {
+    return this.dirtyLights.size > 0;
+  }
+  getLightDataArray() {
+    const lightCount = this.lights.size;
+    const bufferSize = lightCount * 80;
+    const buffer = new Float32Array(bufferSize / 4);
+    let index = 0;
+    for (const light of this.lights.values()) {
+      const offset = index * 20;
+      buffer[offset + 0] = light.type;
+      buffer[offset + 1] = light.intensity;
+      buffer[offset + 2] = light.castShadows;
+      buffer[offset + 3] = light.shadowSoftness;
+      buffer[offset + 4] = light.position[0];
+      buffer[offset + 5] = light.position[1];
+      buffer[offset + 6] = light.position[2];
+      buffer[offset + 7] = 0;
+      buffer[offset + 8] = light.direction[0];
+      buffer[offset + 9] = light.direction[1];
+      buffer[offset + 10] = light.direction[2];
+      buffer[offset + 11] = 0;
+      buffer[offset + 12] = light.color[0];
+      buffer[offset + 13] = light.color[1];
+      buffer[offset + 14] = light.color[2];
+      buffer[offset + 15] = 0;
+      buffer[offset + 16] = light.range;
+      buffer[offset + 17] = light.innerConeAngle;
+      buffer[offset + 18] = light.outerConeAngle;
+      buffer[offset + 19] = 0;
+      index++;
+    }
+    return buffer;
+  }
+  clear() {
+    this.lights.clear();
+    this.dirtyLights.clear();
+    this.nextId = 0;
+  }
+  getMaxLights() {
+    return this.maxLights;
+  }
+}
+
 const GPUTextureUsage = {
   DEPTH_ATTACHMENT: 128
 };
@@ -1781,8 +2046,10 @@ class Engine {
   bufferManager;
   pipelineManager;
   objectManager;
+  lightManager;
   objects;
   materials;
+  lights;
   uniformData;
   cameraData;
   animationId;
@@ -1797,14 +2064,17 @@ class Engine {
     this.deviceManager = new DeviceManager();
     this.objects = [];
     this.materials = [];
+    this.lights = [];
     this.uniformData = {
       time: 0,
       frame: 0,
       objectCount: 0,
+      lightCount: 0,
       resolution: [
         this.config.canvas.width,
         this.config.canvas.height
-      ]
+      ],
+      ambientLight: [0.03, 0.03, 0.03]
     };
     this.cameraData = {
       position: [0, 0, 5],
@@ -1840,6 +2110,7 @@ class Engine {
         this.config.maxObjects,
         this.bufferManager
       );
+      this.lightManager = new LightManager(8);
       console.log("OasisSDF Engine initialized successfully");
     } catch (error) {
       throw new EngineError(`Failed to initialize engine: ${error}`);
@@ -1866,6 +2137,7 @@ class Engine {
    */
   createBuffers() {
     const maxObjects = this.config.maxObjects;
+    const maxLights = 8;
     const objectBuffer = this.bufferManager.createStorageBuffer(
       "objects",
       maxObjects * 64
@@ -1873,20 +2145,25 @@ class Engine {
     );
     const materialBuffer = this.bufferManager.createStorageBuffer(
       "materials",
-      maxObjects * 48
-      // 48 bytes per material
+      maxObjects * 64
+      // 64 bytes per material
+    );
+    const lightBuffer = this.bufferManager.createStorageBuffer(
+      "lights",
+      maxLights * 80
+      // 80 bytes per light
     );
     const uniformBuffer = this.bufferManager.createUniformBuffer(
       "uniforms",
-      32
-      // 32 bytes
+      48
+      // 48 bytes
     );
     const cameraBuffer = this.bufferManager.createUniformBuffer(
       "camera",
       80
       // 80 bytes
     );
-    this.pipelineManager.createStorageBindGroup(objectBuffer, materialBuffer);
+    this.pipelineManager.createStorageBindGroup(objectBuffer, materialBuffer, lightBuffer);
     this.pipelineManager.createUniformBindGroup(uniformBuffer, cameraBuffer);
   }
   /**
@@ -1902,7 +2179,11 @@ class Engine {
     this.materials.push({
       color: [1, 1, 1],
       metallic: 0.5,
-      roughness: 0.5
+      roughness: 0.5,
+      reflectance: 0.5,
+      emission: [0, 0, 0],
+      emissionIntensity: 0,
+      ambientOcclusion: 1
     });
     this.uniformData.objectCount = this.objects.length;
     this.updateBuffers();
@@ -1942,6 +2223,47 @@ class Engine {
     this.updateBuffers();
   }
   /**
+   * Add light to scene
+   */
+  addLight(config) {
+    const id = this.lightManager.createLight(config);
+    if (id !== null) {
+      this.lights = this.lightManager.getAllLights();
+      this.uniformData.lightCount = this.lights.length;
+      this.updateBuffers();
+    }
+    return id;
+  }
+  /**
+   * Remove light from scene
+   */
+  removeLight(id) {
+    const removed = this.lightManager.removeLight(id);
+    if (removed) {
+      this.lights = this.lightManager.getAllLights();
+      this.uniformData.lightCount = this.lights.length;
+      this.updateBuffers();
+    }
+    return removed;
+  }
+  /**
+   * Update light data
+   */
+  updateLight(id, updates) {
+    const updated = this.lightManager.updateLight(id, updates);
+    if (updated) {
+      this.lights = this.lightManager.getAllLights();
+      this.updateBuffers();
+    }
+    return updated;
+  }
+  /**
+   * Get light manager
+   */
+  getLightManager() {
+    return this.lightManager;
+  }
+  /**
    * Update buffers with current data
    */
   updateBuffers() {
@@ -1952,6 +2274,10 @@ class Engine {
     const materialBuffer = this.bufferManager.getBuffer("materials");
     if (materialBuffer) {
       this.bufferManager.writeMaterialBuffer(materialBuffer, this.materials);
+    }
+    const lightBuffer = this.bufferManager.getBuffer("lights");
+    if (lightBuffer) {
+      this.bufferManager.writeLightBuffer(lightBuffer, this.lights);
     }
     const uniformBuffer = this.bufferManager.getBuffer("uniforms");
     if (uniformBuffer) {
@@ -2259,4 +2585,4 @@ class Transform {
   }
 }
 
-export { BufferError, BufferLayout, BufferManager, DeviceManager, Engine, EngineError, OasisSDFError, ObjectChangeFlags, ObjectManager, ObjectPool, ObjectState, PipelineError, PipelineManager, Primitives, SDFObject, SDFPrimitive, Transform, ValidationError, WebGPUError };
+export { BufferError, BufferLayout, BufferManager, DefaultLights, DeviceManager, Engine, EngineError, LightType, OasisSDFError, ObjectChangeFlags, ObjectManager, ObjectPool, ObjectState, PipelineError, PipelineManager, Primitives, SDFObject, SDFPrimitive, Transform, ValidationError, WebGPUError };

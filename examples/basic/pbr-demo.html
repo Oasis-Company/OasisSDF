@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OasisSDF - PBR Lighting Demo</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      background: #0a0a0f;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      overflow: hidden;
+    }
+    
+    #canvas {
+      width: 100vw;
+      height: 100vh;
+      display: block;
+    }
+    
+    #controls {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 12px;
+      max-width: 320px;
+      backdrop-filter: blur(10px);
+    }
+    
+    h1 {
+      font-size: 18px;
+      margin-bottom: 16px;
+      color: #4fc3f7;
+    }
+    
+    .control-group {
+      margin-bottom: 16px;
+    }
+    
+    label {
+      display: block;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 6px;
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #333;
+      outline: none;
+      -webkit-appearance: none;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #4fc3f7;
+      cursor: pointer;
+    }
+    
+    input[type="color"] {
+      width: 100%;
+      height: 32px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    
+    .light-controls {
+      border-top: 1px solid #333;
+      padding-top: 16px;
+      margin-top: 16px;
+    }
+    
+    .stats {
+      font-size: 11px;
+      color: #666;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #333;
+    }
+    
+    .error {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255, 0, 0, 0.2);
+      border: 1px solid #f44336;
+      padding: 20px;
+      border-radius: 12px;
+      max-width: 400px;
+      text-align: center;
+    }
+    
+    .error h2 {
+      color: #f44336;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  
+  <div id="controls">
+    <h1>OasisSDF PBR Demo</h1>
+    
+    <div class="control-group">
+      <label>Metallic: <span id="metallicValue">0.5</span></label>
+      <input type="range" id="metallic" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    
+    <div class="control-group">
+      <label>Roughness: <span id="roughnessValue">0.5</span></label>
+      <input type="range" id="roughness" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    
+    <div class="control-group">
+      <label>Reflectance: <span id="reflectanceValue">0.5</span></label>
+      <input type="range" id="reflectance" min="0" max="1" step="0.01" value="0.5">
+    </div>
+    
+    <div class="control-group">
+      <label>Base Color</label>
+      <input type="color" id="baseColor" value="#ff6b6b">
+    </div>
+    
+    <div class="light-controls">
+      <div class="control-group">
+        <label>Light Intensity: <span id="lightIntensityValue">1.0</span></label>
+        <input type="range" id="lightIntensity" min="0" max="5" step="0.1" value="1.0">
+      </div>
+      
+      <div class="control-group">
+        <label>Light Color</label>
+        <input type="color" id="lightColor" value="#ffffff">
+      </div>
+      
+      <div class="control-group">
+        <label>Shadow Softness: <span id="shadowSoftnessValue">16</span></label>
+        <input type="range" id="shadowSoftness" min="1" max="64" step="1" value="16">
+      </div>
+    </div>
+    
+    <div class="stats">
+      <div id="fps">FPS: --</div>
+      <div id="objects">Objects: --</div>
+      <div id="lights">Lights: --</div>
+    </div>
+  </div>
+  
+  <div id="error" style="display: none;">
+    <h2>WebGPU Not Supported</h2>
+    <p>Please use a browser that supports WebGPU (Chrome 113+, Edge 113+, or Firefox Nightly with flags enabled).</p>
+  </div>
+
+  <script type="module">
+    import { Engine } from '../../src/engine/Engine.js';
+    import { PrimitiveType } from '../../src/types/objects.js';
+    import { LightType } from '../../src/types/lights.js';
+
+    const canvas = document.getElementById('canvas');
+    const errorDiv = document.getElementById('error');
+
+    async function main() {
+      if (!navigator.gpu) {
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      try {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const engine = new Engine({
+          canvas,
+          maxObjects: 100,
+          debug: true
+        });
+
+        await engine.initialize();
+
+        const sphereId = engine.addObject({
+          type: PrimitiveType.SPHERE,
+          position: [0, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        });
+
+        const boxId = engine.addObject({
+          type: PrimitiveType.BOX,
+          position: [-2.5, 0, 0],
+          rotation: [0.5, 0.3, 0],
+          scale: [0.8, 0.8, 0.8]
+        });
+
+        const torusId = engine.addObject({
+          type: PrimitiveType.TORUS,
+          position: [2.5, 0, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1]
+        });
+
+        const groundId = engine.addObject({
+          type: PrimitiveType.BOX,
+          position: [0, -1.5, 0],
+          rotation: [0, 0, 0],
+          scale: [10, 0.1, 10]
+        });
+
+        const mainLightId = engine.addLight({
+          type: LightType.DIRECTIONAL,
+          direction: [0.5, -1, -0.5],
+          color: [1, 1, 1],
+          intensity: 1.0,
+          castShadows: true,
+          shadowSoftness: 16.0
+        });
+
+        const fillLightId = engine.addLight({
+          type: LightType.POINT,
+          position: [-3, 2, 2],
+          color: [0.3, 0.3, 0.5],
+          intensity: 0.5,
+          range: 10.0
+        });
+
+        engine.updateCamera({
+          position: [0, 2, 6],
+          target: [0, 0, 0]
+        });
+
+        const metallicSlider = document.getElementById('metallic');
+        const roughnessSlider = document.getElementById('roughness');
+        const reflectanceSlider = document.getElementById('reflectance');
+        const baseColorInput = document.getElementById('baseColor');
+        const lightIntensitySlider = document.getElementById('lightIntensity');
+        const lightColorInput = document.getElementById('lightColor');
+        const shadowSoftnessSlider = document.getElementById('shadowSoftness');
+
+        function hexToRgb(hex) {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+          return result ? [
+            parseInt(result[1], 16) / 255,
+            parseInt(result[2], 16) / 255,
+            parseInt(result[3], 16) / 255
+          ] : [1, 1, 1];
+        }
+
+        metallicSlider.addEventListener('input', (e) => {
+          document.getElementById('metallicValue').textContent = e.target.value;
+        });
+
+        roughnessSlider.addEventListener('input', (e) => {
+          document.getElementById('roughnessValue').textContent = e.target.value;
+        });
+
+        reflectanceSlider.addEventListener('input', (e) => {
+          document.getElementById('reflectanceValue').textContent = e.target.value;
+        });
+
+        lightIntensitySlider.addEventListener('input', (e) => {
+          document.getElementById('lightIntensityValue').textContent = e.target.value;
+          engine.updateLight(mainLightId, { intensity: parseFloat(e.target.value) });
+        });
+
+        lightColorInput.addEventListener('input', (e) => {
+          engine.updateLight(mainLightId, { color: hexToRgb(e.target.value) });
+        });
+
+        shadowSoftnessSlider.addEventListener('input', (e) => {
+          document.getElementById('shadowSoftnessValue').textContent = e.target.value;
+          engine.updateLight(mainLightId, { shadowSoftness: parseFloat(e.target.value) });
+        });
+
+        let lastTime = performance.now();
+        let frameCount = 0;
+
+        function updateStats() {
+          const now = performance.now();
+          frameCount++;
+          
+          if (now - lastTime >= 1000) {
+            document.getElementById('fps').textContent = `FPS: ${frameCount}`;
+            document.getElementById('objects').textContent = `Objects: ${engine.getObjects().length}`;
+            document.getElementById('lights').textContent = `Lights: ${engine.getLightManager().getLightCount()}`;
+            frameCount = 0;
+            lastTime = now;
+          }
+        }
+
+        engine.start();
+
+        setInterval(updateStats, 100);
+
+        window.addEventListener('resize', () => {
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+          engine.resize(canvas.width, canvas.height);
+        });
+
+        console.log('PBR Demo initialized successfully');
+
+      } catch (err) {
+        console.error('Failed to initialize:', err);
+        errorDiv.style.display = 'block';
+        errorDiv.querySelector('p').textContent = err.message;
+      }
+    }
+
+    main();
+  </script>
+</body>
+</html>

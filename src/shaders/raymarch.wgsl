@@ -3,11 +3,16 @@
  * 
  * Main raymarching shader for OasisSDF
  * Uses SDF primitives and operations to render 3D scenes
+ * Implements PBR lighting with soft shadows and ambient occlusion
  */
 
-// Import primitive and operation functions
+// Import shader modules
 #include "primitives.wgsl"
 #include "operations.wgsl"
+#include "lights.wgsl"
+#include "shadows.wgsl"
+#include "ambient.wgsl"
+#include "pbr.wgsl"
 
 /**
  * Object data structure
@@ -15,7 +20,7 @@
  * Total size: 64 bytes (16-byte aligned)
  */
 struct SDFObjectData {
-  type: f32;          // 4 bytes
+  type: f32;           // 4 bytes
   padding0: vec3<f32>; // 12 bytes
   position: vec3<f32>; // 12 bytes
   padding1: f32;       // 4 bytes
@@ -28,28 +33,35 @@ struct SDFObjectData {
 /**
  * Material data structure
  * Matches TypeScript interface MaterialData
- * Total size: 48 bytes (16-byte aligned)
+ * Total size: 64 bytes (16-byte aligned)
  */
 struct MaterialData {
-  color: vec3<f32>;    // 12 bytes
-  padding0: f32;        // 4 bytes
-  metallic: f32;        // 4 bytes
-  roughness: f32;       // 4 bytes
-  padding1: vec2<f32>;  // 8 bytes
+  color: vec3<f32>;         // 12 bytes
+  padding0: f32;            // 4 bytes
+  metallic: f32;            // 4 bytes
+  roughness: f32;           // 4 bytes
+  reflectance: f32;         // 4 bytes
+  padding1: f32;            // 4 bytes
+  emission: vec3<f32>;      // 12 bytes
+  emissionIntensity: f32;   // 4 bytes
+  ambientOcclusion: f32;    // 4 bytes
+  padding2: vec3<f32>;      // 12 bytes
 };
 
 /**
  * Uniform data structure
  * Matches TypeScript interface UniformData
- * Total size: 32 bytes (16-byte aligned)
+ * Total size: 48 bytes (16-byte aligned)
  */
 struct UniformData {
   time: f32;            // 4 bytes
   frame: f32;           // 4 bytes
   objectCount: f32;     // 4 bytes
-  padding0: f32;        // 4 bytes
+  lightCount: f32;      // 4 bytes
   resolution: vec2<f32>; // 8 bytes
-  padding1: vec2<f32>;  // 8 bytes
+  padding0: vec2<f32>;  // 8 bytes
+  ambientLight: vec3<f32>; // 12 bytes
+  padding1: f32;        // 4 bytes
 };
 
 /**
@@ -73,6 +85,7 @@ struct CameraData {
 // Storage buffers
 @group(0) @binding(0) var<storage, read> objects: array<SDFObjectData>;
 @group(0) @binding(1) var<storage, read> materials: array<MaterialData>;
+@group(0) @binding(2) var<storage, read> lights: array<LightData>;
 
 // Uniform buffers
 @group(1) @binding(0) var<uniform> uniforms: UniformData;
@@ -80,12 +93,8 @@ struct CameraData {
 
 /**
  * Get SDF for a single object
- * @param p - Point to test
- * @param obj - Object data
- * @returns Signed distance
  */
 fn get_object_sdf(p: vec3<f32>, obj: SDFObjectData) -> f32 {
-  // Transform point to object space
   let p_local = (p - obj.position) / obj.scale;
   
   switch obj.type {
@@ -108,12 +117,10 @@ fn get_object_sdf(p: vec3<f32>, obj: SDFObjectData) -> f32 {
 
 /**
  * Get SDF for the entire scene
- * @param p - Point to test
- * @returns Signed distance
  */
 fn get_scene_sdf(p: vec3<f32>) -> f32 {
   var min_dist = 1e10;
-  var object_count = i32(uniforms.objectCount);
+  let object_count = i32(uniforms.objectCount);
   
   for (var i: i32 = 0; i < object_count; i++) {
     let obj = objects[i];
@@ -125,9 +132,29 @@ fn get_scene_sdf(p: vec3<f32>) -> f32 {
 }
 
 /**
+ * Get material index for closest object at point
+ */
+fn get_material_index(p: vec3<f32>) -> i32 {
+  var minDist = 1e10;
+  var materialIndex = 0;
+  
+  let objectCount = i32(uniforms.objectCount);
+  
+  for (var i: i32 = 0; i < objectCount; i++) {
+    let obj = objects[i];
+    let dist = get_object_sdf(p, obj);
+    
+    if (dist < minDist) {
+      minDist = dist;
+      materialIndex = i;
+    }
+  }
+  
+  return materialIndex;
+}
+
+/**
  * Calculate normal at a point
- * @param p - Point to calculate normal at
- * @returns Normal vector
  */
 fn calculate_normal(p: vec3<f32>) -> vec3<f32> {
   let eps = 0.001;
@@ -142,10 +169,6 @@ fn calculate_normal(p: vec3<f32>) -> vec3<f32> {
 
 /**
  * Raymarching algorithm
- * @param ro - Ray origin
- * @param rd - Ray direction
- * @param max_dist - Maximum distance to march
- * @returns Distance to closest surface
  */
 fn raymarch(ro: vec3<f32>, rd: vec3<f32>, max_dist: f32) -> f32 {
   var t = 0.0;
@@ -170,8 +193,6 @@ fn raymarch(ro: vec3<f32>, rd: vec3<f32>, max_dist: f32) -> f32 {
 
 /**
  * Generate ray direction from camera
- * @param uv - Screen UV coordinates
- * @returns Ray direction
  */
 fn get_ray_direction(uv: vec2<f32>) -> vec3<f32> {
   let forward = normalize(camera.target - camera.position);
@@ -192,8 +213,6 @@ fn get_ray_direction(uv: vec2<f32>) -> vec3<f32> {
 
 /**
  * Main fragment shader
- * @param fragCoord - Fragment coordinates
- * @returns Fragment color
  */
 @fragment
 fn main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
@@ -210,20 +229,35 @@ fn main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   let t = raymarch(ro, rd, 100.0);
   
   if (t < 0.0) {
-    // No hit, return background
-    return vec4<f32>(0.1, 0.1, 0.15, 1.0);
+    // No hit, return background with gradient
+    let bgColor = mix(
+      vec3<f32>(0.1, 0.1, 0.15),
+      vec3<f32>(0.05, 0.05, 0.1),
+      uv.y * 0.5 + 0.5
+    );
+    return vec4<f32>(bgColor, 1.0);
   }
   
-  // Calculate hit point
+  // Calculate hit point and normal
   let p = ro + rd * t;
-  
-  // Calculate normal
   let normal = calculate_normal(p);
+  let viewDir = -rd;
   
-  // Calculate lighting
-  let light_dir = normalize(vec3<f32>(1.0, 1.0, -1.0));
-  let diffuse = max(dot(normal, light_dir), 0.0);
+  // Get material
+  let materialIndex = get_material_index(p);
+  let material = materials[materialIndex];
   
-  // Return color
-  return vec4<f32>(diffuse, diffuse, diffuse, 1.0);
+  // Calculate ambient occlusion
+  let ao = calculate_ao(p, normal);
+  
+  // Calculate PBR shading
+  let color = calculate_pbr_shading(p, normal, viewDir, material, ao);
+  
+  // Tone mapping (ACES approximation)
+  let mappedColor = color / (color + vec3<f32>(1.0));
+  
+  // Gamma correction
+  let finalColor = pow(mappedColor, vec3<f32>(1.0 / 2.2));
+  
+  return vec4<f32>(finalColor, 1.0);
 }

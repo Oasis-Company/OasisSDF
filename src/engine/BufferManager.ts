@@ -11,6 +11,7 @@ import type {
   UniformData,
   CameraData
 } from '../types/index.js';
+import type { LightData } from '../types/lights.js';
 import {
   BufferError,
   ValidationError
@@ -201,33 +202,46 @@ export class BufferManager {
   }
 
   writeMaterialBuffer(buffer: GPUBuffer, materials: MaterialData[]): void {
-    const totalSize = materials.length * 48;
+    const totalSize = materials.length * 64;
     const data = new Float32Array(totalSize / 4);
 
     for (let i = 0; i < materials.length; i++) {
       const mat = materials[i]!;
-      const offset = i * 12;
+      const offset = i * 16;
 
-      data[offset] = mat.color[0];
+      data[offset + 0] = mat.color[0];
       data[offset + 1] = mat.color[1];
       data[offset + 2] = mat.color[2];
 
       data[offset + 4] = mat.metallic;
       data[offset + 5] = mat.roughness;
+      data[offset + 6] = mat.reflectance;
+
+      data[offset + 8] = mat.emission[0];
+      data[offset + 9] = mat.emission[1];
+      data[offset + 10] = mat.emission[2];
+      data[offset + 11] = mat.emissionIntensity;
+
+      data[offset + 12] = mat.ambientOcclusion;
     }
 
     this.writeBuffer(buffer, Array.from(data));
   }
 
   writeUniformBuffer(buffer: GPUBuffer, data: UniformData): void {
-    const uniformArray = new Float32Array(8);
+    const uniformArray = new Float32Array(12);
 
     uniformArray[0] = data.time;
     uniformArray[1] = data.frame;
     uniformArray[2] = data.objectCount;
+    uniformArray[3] = data.lightCount;
 
     uniformArray[4] = data.resolution[0];
     uniformArray[5] = data.resolution[1];
+
+    uniformArray[8] = data.ambientLight[0];
+    uniformArray[9] = data.ambientLight[1];
+    uniformArray[10] = data.ambientLight[2];
 
     this.writeBuffer(buffer, Array.from(uniformArray));
   }
@@ -252,6 +266,39 @@ export class BufferManager {
     cameraArray[14] = data.far;
 
     this.writeBuffer(buffer, Array.from(cameraArray));
+  }
+
+  writeLightBuffer(buffer: GPUBuffer, lights: LightData[]): void {
+    const totalSize = lights.length * 80;
+    const data = new Float32Array(totalSize / 4);
+
+    for (let i = 0; i < lights.length; i++) {
+      const light = lights[i]!;
+      const offset = i * 20;
+
+      data[offset + 0] = light.type;
+      data[offset + 1] = light.intensity;
+      data[offset + 2] = light.castShadows;
+      data[offset + 3] = light.shadowSoftness;
+
+      data[offset + 4] = light.position[0];
+      data[offset + 5] = light.position[1];
+      data[offset + 6] = light.position[2];
+
+      data[offset + 8] = light.direction[0];
+      data[offset + 9] = light.direction[1];
+      data[offset + 10] = light.direction[2];
+
+      data[offset + 12] = light.color[0];
+      data[offset + 13] = light.color[1];
+      data[offset + 14] = light.color[2];
+
+      data[offset + 16] = light.range;
+      data[offset + 17] = light.innerConeAngle;
+      data[offset + 18] = light.outerConeAngle;
+    }
+
+    this.writeBuffer(buffer, Array.from(data));
   }
 
   getBuffer(name: string): GPUBuffer | undefined {
