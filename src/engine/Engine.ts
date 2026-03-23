@@ -13,13 +13,12 @@ import { LightManager } from './LightManager.js';
 import { Scene } from '../scene/Scene.js';
 import type {
   SDFObjectData,
-  MaterialData,
   UniformData,
   CameraData,
   EngineConfig
 } from '../types/index.js';
-import type { LightData, LightCreateInfo } from '../types/lights.js';
-import type { SceneConfig, SceneOptions } from '../scene/types.js';
+import type { LightCreateInfo } from '../types/lights.js';
+import type { SceneConfig } from '../scene/types.js';
 import { EngineError, ValidationError } from '../types/index.js';
 
 // WebGPU constants
@@ -557,7 +556,7 @@ export class Engine {
       this.stop();
       
       // Cleanup all scenes
-      for (const [name, scene] of this.scenes) {
+      for (const [, scene] of this.scenes) {
         scene.destroy();
       }
       this.scenes.clear();

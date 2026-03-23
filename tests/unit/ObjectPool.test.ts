@@ -85,9 +85,9 @@ describe('ObjectPool', () => {
     const obj1 = pool.acquire({ type: SDFPrimitive.Sphere });
     const obj2 = pool.acquire({ type: SDFPrimitive.Box });
     
-    obj1.clearDirty();
-    obj2.clearDirty();
-    obj1.setPosition(1, 0, 0);
+    obj1!.clearDirty();
+    obj2!.clearDirty();
+    obj1!.setPosition(1, 0, 0);
     
     let count = 0;
     pool.forEachDirty(() => count++);

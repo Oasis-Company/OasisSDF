@@ -174,6 +174,7 @@ describe('PipelineManager', () => {
       const fragmentShader = `
         @group(0) @binding(0) var<storage, read> objects: array<f32>;
         @group(0) @binding(1) var<storage, read> materials: array<f32>;
+        @group(0) @binding(2) var<storage, read> lights: array<f32>;
 
         @fragment
         fn main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
@@ -185,9 +186,10 @@ describe('PipelineManager', () => {
 
       const objectsBuffer = bufferManager.createStorageBuffer('objects', 64);
       const materialsBuffer = bufferManager.createStorageBuffer('materials', 48);
+      const lightsBuffer = bufferManager.createStorageBuffer('lights', 32);
 
       expect(() => {
-        pipelineManager.createStorageBindGroup(objectsBuffer, materialsBuffer);
+        pipelineManager.createStorageBindGroup(objectsBuffer, materialsBuffer, lightsBuffer);
       }).not.toThrow();
     });
 
@@ -331,7 +333,8 @@ describe('PipelineManager', () => {
 
       const objectsBuffer = bufferManager.createStorageBuffer('objects', 64);
       const materialsBuffer = bufferManager.createStorageBuffer('materials', 48);
-      pipelineManager.createStorageBindGroup(objectsBuffer, materialsBuffer);
+      const lightsBuffer = bufferManager.createStorageBuffer('lights', 32);
+      pipelineManager.createStorageBindGroup(objectsBuffer, materialsBuffer, lightsBuffer);
 
       expect(() => {
         const bindGroup = pipelineManager.getBindGroup('storage');

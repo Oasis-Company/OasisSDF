@@ -5,7 +5,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { DeviceManager, WebGPUError } from '../../src/engine/DeviceManager';
+import { DeviceManager } from '../../src/engine/DeviceManager';
+import { WebGPUError } from '../../src/types/index.js';
+
+// WebGPU types
+type GPUDeviceLostInfo = { reason: string; message: string };
 
 describe('DeviceManager', () => {
   let canvas: HTMLCanvasElement;

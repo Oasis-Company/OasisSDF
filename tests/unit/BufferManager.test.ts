@@ -7,7 +7,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { BufferManager } from '../../src/engine/BufferManager';
 import { DeviceManager } from '../../src/engine/DeviceManager';
-import { BufferError, ValidationError } from '../../src/types/index.js';
+import { BufferError, ValidationError, SDFObjectData, MaterialData, UniformData, CameraData } from '../../src/types/index.js';
+
+// WebGPU types
+type GPUDevice = any;
+type GPUBufferUsage = any;
+
+const GPUBufferUsage = {
+  STORAGE: 0x00000008,
+  COPY_DST: 0x00000002,
+  UNIFORM: 0x00000001,
+  MAP_WRITE: 0x00000020,
+  COPY_SRC: 0x00000004
+} as const;
 
 describe('BufferManager', () => {
   let device: GPUDevice;
@@ -118,7 +130,7 @@ describe('BufferManager', () => {
       if (!manager) return;
 
       const buffer = manager.createStorageBuffer('objects', 128);
-      const objects = [
+      const objects: SDFObjectData[] = [
         {
           type: 1,
           position: [0, 0, 0],
@@ -142,16 +154,24 @@ describe('BufferManager', () => {
       if (!manager) return;
 
       const buffer = manager.createStorageBuffer('materials', 96);
-      const materials = [
+      const materials: MaterialData[] = [
         {
           color: [1, 0, 0],
           metallic: 0.5,
-          roughness: 0.5
+          roughness: 0.5,
+          reflectance: 0.04,
+          emission: [0, 0, 0],
+          emissionIntensity: 0,
+          ambientOcclusion: 1
         },
         {
           color: [0, 1, 0],
           metallic: 0.8,
-          roughness: 0.2
+          roughness: 0.2,
+          reflectance: 0.04,
+          emission: [0, 0, 0],
+          emissionIntensity: 0,
+          ambientOcclusion: 1
         }
       ];
 
@@ -164,11 +184,13 @@ describe('BufferManager', () => {
       if (!manager) return;
 
       const buffer = manager.createUniformBuffer('uniforms', 32);
-      const uniforms = {
+      const uniforms: UniformData = {
         time: 1.5,
         frame: 100,
         objectCount: 10,
-        resolution: [800, 600]
+        lightCount: 0,
+        resolution: [800, 600],
+        ambientLight: [0.03, 0.03, 0.03]
       };
 
       expect(() => {
@@ -180,7 +202,7 @@ describe('BufferManager', () => {
       if (!manager) return;
 
       const buffer = manager.createUniformBuffer('camera', 80);
-      const camera = {
+      const camera: CameraData = {
         position: [0, 0, 5],
         target: [0, 0, 0],
         up: [0, 1, 0],
