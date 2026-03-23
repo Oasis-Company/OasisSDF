@@ -81,3 +81,81 @@ describe('Box Primitive Performance', () => {
     engine.cleanup();
   });
 });
+
+describe('Torus Primitive Performance', () => {
+  let canvas: HTMLCanvasElement;
+
+  beforeEach(() => {
+    if (typeof document !== 'undefined') {
+      canvas = document.createElement('canvas');
+      canvas.width = 800;
+      canvas.height = 600;
+    }
+  });
+
+  it('should render torus primitives at >60 FPS', async () => {
+    if (!canvas || !navigator.gpu) return;
+
+    const engine = new Engine({ canvas, maxObjects: 1000 });
+    await engine.initialize();
+    
+    for (let i = 0; i < 100; i++) {
+      const torus = Primitives.torus(0.1, 0.04, {
+        transform: {
+          position: [
+            (Math.random() - 0.5) * 20,
+            (Math.random() - 0.5) * 20,
+            -10 - Math.random() * 10
+          ]
+        }
+      });
+      engine.addObject(torus);
+    }
+    
+    const profiler = new PerformanceProfiler();
+    profiler.start();
+    
+    for (let frame = 0; frame < 60; frame++) {
+      engine.render(1/60);
+      profiler.recordFrame(100);
+    }
+    
+    profiler.stop();
+    
+    const stats = profiler.getStatistics();
+    expect(stats.avgFPS).toBeGreaterThan(60);
+    
+    engine.cleanup();
+  });
+
+  it('should use minimal memory with torus primitives', async () => {
+    if (!canvas || !navigator.gpu) return;
+
+    const memoryProfiler = new MemoryProfiler();
+    const engine = new Engine({ canvas, maxObjects: 1000 });
+    
+    memoryProfiler.takeSnapshot(0, 0);
+    
+    await engine.initialize();
+    
+    for (let i = 0; i < 100; i++) {
+      const torus = Primitives.torus(0.1, 0.04, {
+        transform: {
+          position: [
+            (Math.random() - 0.5) * 20,
+            (Math.random() - 0.5) * 20,
+            -10 - Math.random() * 10
+          ]
+        }
+      });
+      engine.addObject(torus);
+    }
+    
+    memoryProfiler.takeSnapshot(100, 1);
+    
+    const stats = memoryProfiler.getStatistics();
+    expect(stats.currentGPUMemory).toBeLessThan(10 * 1024 * 1024); // < 10MB
+    
+    engine.cleanup();
+  });
+});
