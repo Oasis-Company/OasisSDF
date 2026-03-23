@@ -20,6 +20,7 @@ import type {
   CameraData,
   EngineConfig
 } from '../types/index.js';
+import type { ObjectConfig } from '../types/objects.js';
 import type { LightCreateInfo } from '../types/lights.js';
 import type { SceneConfig } from '../scene/types.js';
 import { EngineError, ValidationError } from '../types/index.js';
@@ -192,11 +193,26 @@ export class Engine {
 
   /**
    * Add object to active scene
-   * @param object - SDF object data
+   * @param object - SDF object data or object config
    * @returns Object index
    */
-  addObject(object: SDFObjectData): number {
-    const index = this.activeScene.addObject(object);
+  addObject(object: SDFObjectData | ObjectConfig): number {
+    let sdfObject: SDFObjectData;
+    
+    if ('transform' in object) {
+      // Convert ObjectConfig to SDFObjectData
+      sdfObject = {
+        type: object.type,
+        position: object.transform?.position || [0, 0, 0],
+        rotation: object.transform?.rotation || [0, 0, 0],
+        scale: object.transform?.scale || [1, 1, 1]
+      };
+    } else {
+      // Type assertion to SDFObjectData
+      sdfObject = object as SDFObjectData;
+    }
+    
+    const index = this.activeScene.addObject(sdfObject);
     this.uniformData.objectCount = this.activeScene.getObjectCount();
     this.updateBuffers();
     return index;
@@ -286,10 +302,9 @@ export class Engine {
    * Update an existing material
    * @param id - Material ID
    * @param material - Material data
-   * @returns Whether update was successful
    */
-  updateMaterial(id: number, material: Partial<MaterialData>): boolean {
-    return this.materialManager.updateMaterial(id, material);
+  updateMaterial(id: number, material: Partial<MaterialData>): void {
+    this.materialManager.updateMaterial(id, material);
   }
 
   /**
@@ -302,31 +317,23 @@ export class Engine {
   }
 
   /**
-   * Remove material
+   * Release material (decrement ref count and destroy if no references)
    * @param id - Material ID
-   * @returns Whether material was removed
+   * @returns Whether material was destroyed
    */
-  removeMaterial(id: number): boolean {
-    return this.materialManager.removeMaterial(id);
+  releaseMaterial(id: number): boolean {
+    return this.materialManager.releaseMaterial(id);
   }
 
   /**
    * Reference a material (increment ref count)
    * @param id - Material ID
-   * @returns Whether reference was successful
    */
-  referenceMaterial(id: number): boolean {
-    return this.materialManager.referenceMaterial(id);
+  referenceMaterial(id: number): void {
+    this.materialManager.referenceMaterial(id);
   }
 
-  /**
-   * Release a material (decrement ref count)
-   * @param id - Material ID
-   * @returns Whether release was successful
-   */
-  releaseMaterial(id: number): boolean {
-    return this.materialManager.releaseMaterial(id);
-  }
+
 
   /**
    * Get material manager
