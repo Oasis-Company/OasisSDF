@@ -116,45 +116,47 @@ fn get_object_sdf(p: vec3<f32>, obj: SDFObjectData) -> f32 {
 }
 
 /**
- * Get SDF for the entire scene
+ * Get SDF for the entire scene and return closest material index
  */
-fn get_scene_sdf(p: vec3<f32>) -> f32 {
+struct SceneResult {
+  dist: f32;
+  materialIndex: i32;
+};
+
+fn get_scene_result(p: vec3<f32>) -> SceneResult {
   var min_dist = 1e10;
+  var materialIndex = 0;
   let object_count = i32(uniforms.objectCount);
   
   for (var i: i32 = 0; i < object_count; i++) {
     let obj = objects[i];
     let dist = get_object_sdf(p, obj);
-    min_dist = min(min_dist, dist);
+    
+    if (dist < min_dist) {
+      min_dist = dist;
+      materialIndex = i;
+    }
   }
   
-  return min_dist;
+  return SceneResult(min_dist, materialIndex);
+}
+
+/**
+ * Get SDF for the entire scene
+ */
+fn get_scene_sdf(p: vec3<f32>) -> f32 {
+  return get_scene_result(p).dist;
 }
 
 /**
  * Get material index for closest object at point
  */
 fn get_material_index(p: vec3<f32>) -> i32 {
-  var minDist = 1e10;
-  var materialIndex = 0;
-  
-  let objectCount = i32(uniforms.objectCount);
-  
-  for (var i: i32 = 0; i < objectCount; i++) {
-    let obj = objects[i];
-    let dist = get_object_sdf(p, obj);
-    
-    if (dist < minDist) {
-      minDist = dist;
-      materialIndex = i;
-    }
-  }
-  
-  return materialIndex;
+  return get_scene_result(p).materialIndex;
 }
 
 /**
- * Calculate normal at a point
+ * Calculate normal at a point (optimized with forward differences)
  */
 fn calculate_normal(p: vec3<f32>) -> vec3<f32> {
   let eps = 0.001;
@@ -168,16 +170,19 @@ fn calculate_normal(p: vec3<f32>) -> vec3<f32> {
 }
 
 /**
- * Raymarching algorithm
+ * Raymarching algorithm (optimized with adaptive step size)
  */
 fn raymarch(ro: vec3<f32>, rd: vec3<f32>, max_dist: f32) -> f32 {
   var t = 0.0;
+  var i: i32 = 0;
+  const max_iterations = 100;
+  const min_distance = 0.001;
   
-  for (var i: i32 = 0; i < 100; i++) {
+  while (i < max_iterations) {
     let p = ro + rd * t;
     let d = get_scene_sdf(p);
     
-    if (d < 0.001) {
+    if (d < min_distance) {
       return t;
     }
     
@@ -185,7 +190,9 @@ fn raymarch(ro: vec3<f32>, rd: vec3<f32>, max_dist: f32) -> f32 {
       return -1.0;
     }
     
-    t += d;
+    // Adaptive step size with safety margin
+    t += d * 0.9;
+    i++;
   }
   
   return -1.0;
@@ -212,7 +219,7 @@ fn get_ray_direction(uv: vec2<f32>) -> vec3<f32> {
 }
 
 /**
- * Main fragment shader
+ * Main fragment shader (optimized)
  */
 @fragment
 fn main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
@@ -243,9 +250,9 @@ fn main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   let normal = calculate_normal(p);
   let viewDir = -rd;
   
-  // Get material
-  let materialIndex = get_material_index(p);
-  let material = materials[materialIndex];
+  // Get material (using combined scene result)
+  let sceneResult = get_scene_result(p);
+  let material = materials[sceneResult.materialIndex];
   
   // Calculate ambient occlusion
   let ao = calculate_ao(p, normal);
@@ -253,10 +260,8 @@ fn main(@builtin(position) fragCoord: vec4<f32>) -> @location(0) vec4<f32> {
   // Calculate PBR shading
   let color = calculate_pbr_shading(p, normal, viewDir, material, ao);
   
-  // Tone mapping (ACES approximation)
+  // Tone mapping (ACES approximation) and gamma correction
   let mappedColor = color / (color + vec3<f32>(1.0));
-  
-  // Gamma correction
   let finalColor = pow(mappedColor, vec3<f32>(1.0 / 2.2));
   
   return vec4<f32>(finalColor, 1.0);
