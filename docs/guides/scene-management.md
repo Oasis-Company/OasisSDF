@@ -471,8 +471,115 @@ const scene = engine.getActiveScene();
 console.log('Scene dirty:', scene.isDirty());
 ```
 
+## Material Management
+
+OasisSDF provides a comprehensive material system for controlling the appearance of 3D objects. Here's how to use materials in your scenes:
+
+### Creating Materials
+
+```typescript
+// Create a basic material
+const materialId = engine.createMaterial({
+  color: [0.8, 0.6, 0.4],
+  metallic: 0.2,
+  roughness: 0.8
+});
+
+// Create a metallic material
+const metallicMaterialId = engine.createMaterial({
+  color: [0.9, 0.9, 0.9],
+  metallic: 1.0,
+  roughness: 0.1
+});
+
+// Create an emissive material
+const emissiveMaterialId = engine.createMaterial({
+  color: [0, 0, 0],
+  emission: [1, 0.5, 0],
+  emissionIntensity: 2.0
+});
+```
+
+### Using PBRMaterial Class
+
+The `PBRMaterial` class provides a more object-oriented way to work with materials:
+
+```typescript
+import { PBRMaterial } from 'oasissdf';
+
+// Create a material using PBRMaterial class
+const goldMaterial = new PBRMaterial({
+  color: [1, 0.84, 0],
+  metallic: 1.0,
+  roughness: 0.1
+});
+
+// Create a material from preset
+const glassMaterial = PBRMaterial.createGlass();
+const plasticMaterial = PBRMaterial.createPlastic([0.2, 0.6, 0.8]);
+
+// Convert to material data and create in engine
+const goldMaterialId = engine.createMaterial(goldMaterial.toData());
+```
+
+### Assigning Materials to Objects
+
+```typescript
+// Add an object with a material
+const sphere = engine.addObject({
+  type: 1, // Sphere
+  position: [0, 0, 0],
+  scale: [1, 1, 1],
+  materialId: goldMaterialId
+});
+
+// Update an existing object's material
+engine.updateObject(sphere, {
+  materialId: emissiveMaterialId
+});
+```
+
+### Updating Materials
+
+```typescript
+// Update material properties
+engine.updateMaterial(metallicMaterialId, {
+  color: [0.8, 0.8, 1.0],
+  roughness: 0.3
+});
+
+// Update using PBRMaterial
+const updatedMaterial = new PBRMaterial({
+  color: [0.8, 0.8, 1.0],
+  metallic: 1.0,
+  roughness: 0.3
+});
+engine.updateMaterial(metallicMaterialId, updatedMaterial.toData());
+```
+
+### Material Reference Counting
+
+The material system uses reference counting to automatically clean up unused materials:
+
+```typescript
+// Reference a material (increment ref count)
+engine.referenceMaterial(materialId);
+
+// Release a material (decrement ref count)
+// Material will be automatically destroyed when ref count reaches 0
+engine.releaseMaterial(materialId);
+```
+
+### Best Practices for Materials
+
+1. **Reuse Materials**: Create materials once and reuse them across multiple objects
+2. **Presets**: Use material presets for common material types
+3. **Memory Management**: Release materials when they're no longer needed
+4. **Performance**: Limit the number of unique materials to reduce buffer updates
+
 ## Next Steps
 
 - Learn about [Performance Optimization](./performance.md)
 - Explore [Advanced Rendering Techniques](../api/Scene.md)
 - Check out [Example Projects](../../examples/)
+- See the [PBR Material Guide](./pbr-materials.md) for more details on material properties

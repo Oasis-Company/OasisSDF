@@ -8,11 +8,14 @@
 import { DeviceManager } from './DeviceManager.js';
 import { BufferManager } from './BufferManager.js';
 import { PipelineManager } from './PipelineManager.js';
+import { MaterialManager } from './MaterialManager.js';
+import { MaterialBuffer } from './MaterialBuffer.js';
 import { ObjectManager } from '../objects/ObjectManager.js';
 import { LightManager } from './LightManager.js';
 import { Scene } from '../scene/Scene.js';
 import type {
   SDFObjectData,
+  MaterialData,
   UniformData,
   CameraData,
   EngineConfig
@@ -34,6 +37,8 @@ export class Engine {
   private deviceManager: DeviceManager;
   private bufferManager!: BufferManager;
   private pipelineManager!: PipelineManager;
+  private materialManager!: MaterialManager;
+  private materialBuffer!: MaterialBuffer;
   private objectManager!: ObjectManager;
   private scenes: Map<string, Scene>;
   private activeScene: Scene;
@@ -88,6 +93,13 @@ export class Engine {
 
       // Create buffer manager
       this.bufferManager = new BufferManager(device);
+
+      // Create material manager
+      this.materialManager = new MaterialManager(this.config.maxObjects!);
+
+      // Create material buffer
+      this.materialBuffer = new MaterialBuffer(this.bufferManager, this.config.maxObjects!);
+      this.materialBuffer.setMaterialManager(this.materialManager);
 
       // Create pipeline manager
       this.pipelineManager = new PipelineManager(device, this.bufferManager, {
@@ -152,11 +164,8 @@ export class Engine {
       maxObjects * 64 // 64 bytes per object
     );
 
-    // Create material buffer
-    const materialBuffer = this.bufferManager.createStorageBuffer(
-      'materials',
-      maxObjects * 64 // 64 bytes per material
-    );
+    // Create material buffer (handled by MaterialBuffer class)
+    const materialBuffer = this.materialBuffer.getBuffer();
 
     // Create light buffer
     const lightBuffer = this.bufferManager.createStorageBuffer(
@@ -265,6 +274,77 @@ export class Engine {
   }
 
   /**
+   * Create a new material
+   * @param material - Material data
+   * @returns Material ID
+   */
+  createMaterial(material: Partial<MaterialData>): number {
+    return this.materialManager.createMaterial(material);
+  }
+
+  /**
+   * Update an existing material
+   * @param id - Material ID
+   * @param material - Material data
+   * @returns Whether update was successful
+   */
+  updateMaterial(id: number, material: Partial<MaterialData>): boolean {
+    return this.materialManager.updateMaterial(id, material);
+  }
+
+  /**
+   * Get material by ID
+   * @param id - Material ID
+   * @returns Material data or null
+   */
+  getMaterial(id: number): MaterialData | null {
+    return this.materialManager.getMaterial(id);
+  }
+
+  /**
+   * Remove material
+   * @param id - Material ID
+   * @returns Whether material was removed
+   */
+  removeMaterial(id: number): boolean {
+    return this.materialManager.removeMaterial(id);
+  }
+
+  /**
+   * Reference a material (increment ref count)
+   * @param id - Material ID
+   * @returns Whether reference was successful
+   */
+  referenceMaterial(id: number): boolean {
+    return this.materialManager.referenceMaterial(id);
+  }
+
+  /**
+   * Release a material (decrement ref count)
+   * @param id - Material ID
+   * @returns Whether release was successful
+   */
+  releaseMaterial(id: number): boolean {
+    return this.materialManager.releaseMaterial(id);
+  }
+
+  /**
+   * Get material manager
+   * @returns Material manager
+   */
+  getMaterialManager(): MaterialManager {
+    return this.materialManager;
+  }
+
+  /**
+   * Get material buffer
+   * @returns Material buffer
+   */
+  getMaterialBuffer(): MaterialBuffer {
+    return this.materialBuffer;
+  }
+
+  /**
    * Update buffers with current data
    */
   private updateBuffers(): void {
@@ -277,9 +357,8 @@ export class Engine {
     }
 
     // Update material buffer
-    const materialBuffer = this.bufferManager.getBuffer('materials');
-    if (materialBuffer) {
-      this.bufferManager.writeMaterialBuffer(materialBuffer, renderData.materials);
+    if (this.materialBuffer) {
+      this.materialBuffer.update();
     }
 
     // Update light buffer
@@ -567,6 +646,10 @@ export class Engine {
       
       if (this.pipelineManager) {
         this.pipelineManager.cleanup();
+      }
+      
+      if (this.materialBuffer) {
+        this.materialBuffer.destroy();
       }
       
       if (this.bufferManager) {
