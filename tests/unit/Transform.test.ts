@@ -56,27 +56,27 @@ describe('Transform System', () => {
     });
 
     it('should transform point', () => {
-      const matrix = Matrix4.translation(1, 2, 3);
-      const point = [1, 1, 1];
-      const result = matrix.transformPoint(point);
-      expect(result).toEqual([2, 3, 4]);
-    });
+    const matrix = Matrix4.translation(1, 2, 3);
+    const point: [number, number, number] = [1, 1, 1];
+    const result = matrix.transformPoint(point);
+    expect(result).toEqual([2, 3, 4]);
+  });
 
-    it('should transform vector', () => {
-      const matrix = Matrix4.scale(2, 2, 2);
-      const vector = [1, 1, 1];
-      const result = matrix.transformVector(vector);
-      expect(result).toEqual([2, 2, 2]);
-    });
+  it('should transform vector', () => {
+    const matrix = Matrix4.scale(2, 2, 2);
+    const vector: [number, number, number] = [1, 1, 1];
+    const result = matrix.transformVector(vector);
+    expect(result).toEqual([2, 2, 2]);
+  });
 
-    it('should calculate inverse matrix', () => {
-      const matrix = Matrix4.translation(1, 2, 3);
-      const inverse = matrix.inverse();
-      const point = [1, 1, 1];
-      const transformed = matrix.transformPoint(point);
-      const inversed = inverse.transformPoint(transformed);
-      expect(inversed).toEqual(point);
-    });
+  it('should calculate inverse matrix', () => {
+    const matrix = Matrix4.translation(1, 2, 3);
+    const inverse = matrix.inverse();
+    const point: [number, number, number] = [1, 1, 1];
+    const transformed = matrix.transformPoint(point);
+    const inversed = inverse.transformPoint(transformed);
+    expect(inversed).toEqual(point);
+  });
   });
 
   describe('TransformHierarchy', () => {
