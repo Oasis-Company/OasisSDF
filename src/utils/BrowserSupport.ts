@@ -48,19 +48,19 @@ export class BrowserSupport {
     if (ua.includes('Chrome') && !ua.includes('Edg')) {
       name = 'Chrome';
       const match = ua.match(/Chrome\/(\d+)/);
-      version = match ? match[1] : 'unknown';
+      version = match ? (match[1] || 'unknown') : 'unknown';
     } else if (ua.includes('Edg')) {
       name = 'Edge';
       const match = ua.match(/Edg\/(\d+)/);
-      version = match ? match[1] : 'unknown';
+      version = match ? (match[1] || 'unknown') : 'unknown';
     } else if (ua.includes('Firefox')) {
       name = 'Firefox';
       const match = ua.match(/Firefox\/(\d+)/);
-      version = match ? match[1] : 'unknown';
+      version = match ? (match[1] || 'unknown') : 'unknown';
     } else if (ua.includes('Safari') && !ua.includes('Chrome')) {
       name = 'Safari';
       const match = ua.match(/Version\/(\d+)/);
-      version = match ? match[1] : 'unknown';
+      version = match ? (match[1] || 'unknown') : 'unknown';
     }
 
     const info: BrowserInfo = {
@@ -124,8 +124,7 @@ export class BrowserSupport {
         return missing;
       }
 
-      const info = this.detect();
-      
+      // 检测 16 位着色器支持
       if (!adapter.features.has('shader-f16')) {
         missing.push('16-bit shader support');
       }
@@ -161,7 +160,8 @@ export class BrowserSupport {
     const currentVersion = parseInt(info.version, 10);
 
     if (currentVersion < minVersion) {
-      return recommendations[info.name] || recommendations.Unknown;
+      const recommendation = recommendations[info.name as keyof typeof recommendations];
+      return (recommendation || recommendations.Unknown) as string;
     }
 
     if (!info.webgpuSupported) {

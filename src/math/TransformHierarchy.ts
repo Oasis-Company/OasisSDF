@@ -56,17 +56,21 @@ export class TransformHierarchy {
    */
   removeChild(parent: TransformData, child: TransformData): void {
     if ('children' in parent) {
-      const index = parent.children!.indexOf(child);
+      const children = parent.children as TransformData[];
+      const index = children.indexOf(child);
       if (index > -1) {
-        parent.children!.splice(index, 1);
+        children.splice(index, 1);
         (child as any).parent = undefined;
         this.markDirty(parent);
 
         // If child has children, add them to roots
-        if ('children' in child && child.children!.length > 0) {
-          child.children!.forEach((grandchild) => {
-            this.roots.push(grandchild as any);
-          });
+        if ('children' in child) {
+          const childChildren = child.children as TransformData[];
+          if (childChildren.length > 0) {
+            childChildren.forEach((grandchild: TransformData) => {
+              this.roots.push(grandchild as any);
+            });
+          }
         }
       }
     }
@@ -215,6 +219,7 @@ export class TransformHierarchy {
     while (!isDirty && current) {
       const currentWithData = current as TransformData & {
         parent?: TransformData;
+        worldMatrix?: Float32Array;
         isDirty?: boolean;
       };
       isDirty = currentWithData.isDirty || !currentWithData.worldMatrix;

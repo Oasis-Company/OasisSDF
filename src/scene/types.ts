@@ -1,5 +1,5 @@
-import type { SDFObjectData, MaterialData, CameraData, EngineConfig } from '../types/index.js';
-import type { LightData, LightCreateInfo } from '../types/lights.js';
+import type { SDFObjectData, MaterialData, CameraData } from '../types/index.js';
+import type { LightData } from '../types/lights.js';
 
 /**
  * Scene configuration

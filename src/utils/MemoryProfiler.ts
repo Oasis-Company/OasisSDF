@@ -248,7 +248,7 @@ export class MemoryProfiler {
     
     let increasingCount = 0;
     for (let i = 1; i < recentSnapshots.length; i++) {
-      if (recentSnapshots[i].jsHeapSize > recentSnapshots[i - 1].jsHeapSize) {
+      if (recentSnapshots[i]!.jsHeapSize > recentSnapshots[i - 1]!.jsHeapSize) {
         increasingCount++;
       }
     }

@@ -6,8 +6,8 @@
  */
 
 import { MaterialManager } from './MaterialManager.js';
-import type { MaterialData } from '../types/index.js';
-import { BufferLayout, BufferError, ValidationError } from '../types/index.js';
+import { BufferError, ValidationError } from '../types/index.js';
+import { BufferLayout } from '../types/index.js';
 import type { BufferManager } from './BufferManager.js';
 
 /**

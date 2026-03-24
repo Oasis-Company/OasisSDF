@@ -202,4 +202,92 @@ console.log('Material roughness:', material.roughness);
 
 ```typescript
 // Create metallic material
-const goldMaterial = PBRMaterial.createMetallic([0.8, 0.6, 0.2], 1.0, 0
+const goldMaterial = PBRMaterial.createMetallic([0.8, 0.6, 0.2], 1.0, 0.1);
+
+// Create emissive material
+const neonMaterial = PBRMaterial.createEmissive([1.0, 0.2, 0.2], 3.0);
+
+// Create glass material
+const glassMaterial = PBRMaterial.createGlass([0.9, 0.9, 1.0], 1.0, 1.5);
+
+// Create plastic material
+const plasticMaterial = PBRMaterial.createPlastic([0.2, 0.6, 0.8], 0.1);
+
+// Create rubber material
+const rubberMaterial = PBRMaterial.createRubber([0.2, 0.2, 0.2], 0.9);
+```
+
+### Cloning Materials
+
+```typescript
+// Create a base material
+const baseMaterial = new PBRMaterial({
+  color: [0.8, 0.2, 0.2],
+  metallic: 0.0,
+  roughness: 0.5
+});
+
+// Clone the material
+const clonedMaterial = baseMaterial.clone();
+
+// Modify the cloned material
+const modifiedMaterial = new PBRMaterial({
+  ...clonedMaterial.toJSON(),
+  color: [0.2, 0.8, 0.2]
+});
+
+console.log('Base material color:', baseMaterial.color);
+console.log('Cloned material color:', clonedMaterial.color);
+console.log('Modified material color:', modifiedMaterial.color);
+```
+
+### Using with MaterialManager
+
+```typescript
+// Create material manager
+const materialManager = new MaterialManager(100);
+
+// Create PBR material
+const pbrMaterial = new PBRMaterial({
+  color: [0.8, 0.2, 0.2],
+  metallic: 0.0,
+  roughness: 0.5
+});
+
+// Add material to manager
+const materialId = materialManager.createMaterial(pbrMaterial.toJSON());
+
+// Update material
+const updatedMaterial = new PBRMaterial({
+  ...pbrMaterial.toJSON(),
+  color: [0.2, 0.8, 0.2]
+});
+materialManager.updateMaterial(materialId, updatedMaterial.toJSON());
+```
+
+### Error Handling
+
+The PBRMaterial constructor throws `ValidationError` in the following cases:
+
+- When color is not a valid RGB array
+- When metallic is not between 0 and 1
+- When roughness is not between 0 and 1
+- When reflectance is not between 0 and 1
+- When emission is not a valid RGB array
+- When emissionIntensity is not a non-negative number
+- When ambientOcclusion is not between 0 and 1
+- When transmission is not between 0 and 1
+- When ior is not a positive number
+
+```typescript
+try {
+  // Try to create a material with invalid properties
+  const material = new PBRMaterial({
+    color: [1, 0, 0],
+    metallic: 2.0, // Invalid: should be between 0 and 1
+    roughness: 0.5
+  });
+} catch (error) {
+  console.error('Error creating material:', error);
+}
+```

@@ -295,9 +295,9 @@ export class Scene {
 
   /**
    * Update scene
-   * @param deltaTime - Time since last frame
+   * @param _deltaTime - Time since last frame
    */
-  update(deltaTime: number): void {
+  update(_deltaTime: number): void {
     // Sync objects if object manager is available
     if (this.objectManager) {
       this.objectManager.syncObjects();

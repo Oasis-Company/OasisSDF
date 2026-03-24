@@ -965,6 +965,389 @@ class PipelineManager {
   }
 }
 
+class MaterialManager {
+  materials = /* @__PURE__ */ new Map();
+  materialIdToIndex = /* @__PURE__ */ new Map();
+  freeSlots = [];
+  nextMaterialId = 1;
+  nextBufferIndex = 0;
+  dirtyMaterials = /* @__PURE__ */ new Set();
+  maxMaterials;
+  /**
+   * Create a new MaterialManager
+   * @param maxMaterials Maximum number of materials to support
+   */
+  constructor(maxMaterials = 1e3) {
+    this.maxMaterials = maxMaterials;
+  }
+  /**
+   * Allocate a buffer slot for a new material
+   * @returns Buffer index
+   */
+  allocateSlot() {
+    if (this.freeSlots.length > 0) {
+      return this.freeSlots.pop();
+    }
+    if (this.nextBufferIndex >= this.maxMaterials) {
+      throw new ValidationError(`Maximum material capacity reached: ${this.maxMaterials}`);
+    }
+    return this.nextBufferIndex++;
+  }
+  /**
+   * Release a buffer slot when material is destroyed
+   * @param index Buffer index to release
+   */
+  releaseSlot(index) {
+    this.freeSlots.push(index);
+  }
+  /**
+   * Create a new material instance
+   * @param materialData Material properties
+   * @returns Material ID
+   */
+  createMaterial(materialData) {
+    if (this.materials.size >= this.maxMaterials) {
+      throw new ValidationError(`Maximum material count reached: ${this.maxMaterials}`);
+    }
+    const defaultMaterial = {
+      color: [0.5, 0.5, 0.5],
+      metallic: 0,
+      roughness: 0.5,
+      reflectance: 0.04,
+      emission: [0, 0, 0],
+      emissionIntensity: 0,
+      ambientOcclusion: 1
+    };
+    const bufferIndex = this.allocateSlot();
+    const material = {
+      id: this.nextMaterialId++,
+      data: {
+        ...defaultMaterial,
+        ...materialData
+      },
+      refCount: 1,
+      isDirty: true,
+      bufferIndex
+    };
+    this.materials.set(material.id, material);
+    this.materialIdToIndex.set(material.id, bufferIndex);
+    this.dirtyMaterials.add(material.id);
+    return material.id;
+  }
+  /**
+   * Get material data by ID
+   * @param materialId Material ID
+   * @returns Material data
+   */
+  getMaterial(materialId) {
+    const material = this.materials.get(materialId);
+    return material ? { ...material.data } : null;
+  }
+  /**
+   * Update material properties
+   * @param materialId Material ID
+   * @param materialData Material properties to update
+   */
+  updateMaterial(materialId, materialData) {
+    const material = this.materials.get(materialId);
+    if (!material) {
+      throw new ValidationError(`Material not found: ${materialId}`);
+    }
+    material.data = {
+      ...material.data,
+      ...materialData
+    };
+    material.isDirty = true;
+    this.dirtyMaterials.add(materialId);
+  }
+  /**
+   * Increment material reference count
+   * @param materialId Material ID
+   */
+  referenceMaterial(materialId) {
+    const material = this.materials.get(materialId);
+    if (!material) {
+      throw new ValidationError(`Material not found: ${materialId}`);
+    }
+    material.refCount++;
+  }
+  /**
+   * Decrement material reference count and destroy if no references
+   * @param materialId Material ID
+   * @returns True if material was destroyed
+   */
+  releaseMaterial(materialId) {
+    const material = this.materials.get(materialId);
+    if (!material) {
+      throw new ValidationError(`Material not found: ${materialId}`);
+    }
+    material.refCount--;
+    if (material.refCount <= 0) {
+      this.releaseSlot(material.bufferIndex);
+      this.materials.delete(materialId);
+      this.materialIdToIndex.delete(materialId);
+      this.dirtyMaterials.delete(materialId);
+      return true;
+    }
+    return false;
+  }
+  /**
+   * Get all materials as an array for buffer writing
+   * @returns Array of material data
+   */
+  getMaterialsForBuffer() {
+    const materials = Array(this.nextBufferIndex).fill(null);
+    for (const material of this.materials.values()) {
+      materials[material.bufferIndex] = material.data;
+    }
+    return materials.filter((material) => material !== null);
+  }
+  /**
+   * Get all materials as an array
+   * @returns Array of material data
+   */
+  getAllMaterials() {
+    return Array.from(this.materials.values()).map((material) => material.data);
+  }
+  /**
+   * Get dirty materials that need to be updated in the buffer
+   * @returns Set of material IDs
+   */
+  getDirtyMaterials() {
+    return this.dirtyMaterials;
+  }
+  /**
+   * Clear dirty flag for all materials
+   */
+  clearDirtyMaterials() {
+    for (const id of this.dirtyMaterials) {
+      const material = this.materials.get(id);
+      if (material) {
+        material.isDirty = false;
+      }
+    }
+    this.dirtyMaterials.clear();
+  }
+  /**
+   * Get current material count
+   * @returns Number of active materials
+   */
+  getMaterialCount() {
+    return this.materials.size;
+  }
+  /**
+   * Get maximum material capacity
+   * @returns Maximum number of materials
+   */
+  getMaxMaterials() {
+    return this.maxMaterials;
+  }
+  /**
+   * Check if material exists
+   * @param materialId Material ID
+   * @returns True if material exists
+   */
+  hasMaterial(materialId) {
+    return this.materials.has(materialId);
+  }
+  /**
+   * Get buffer index for a material
+   * @param materialId Material ID
+   * @returns Buffer index or -1 if not found
+   */
+  getBufferIndex(materialId) {
+    return this.materialIdToIndex.get(materialId) || -1;
+  }
+  /**
+   * Clear all materials
+   */
+  clear() {
+    this.materials.clear();
+    this.materialIdToIndex.clear();
+    this.freeSlots = [];
+    this.dirtyMaterials.clear();
+    this.nextMaterialId = 1;
+    this.nextBufferIndex = 0;
+  }
+  /**
+   * Get material instance by ID (internal use only)
+   * @param materialId Material ID
+   * @returns Material instance or null
+   */
+  getMaterialInstance(materialId) {
+    return this.materials.get(materialId) || null;
+  }
+}
+
+class MaterialBuffer {
+  bufferManager;
+  bufferName;
+  maxMaterials;
+  bufferSize;
+  materialManager;
+  targetUtilization = 0.7;
+  minBufferSize = 100;
+  maxBufferSize = 1e4;
+  /**
+   * Create a new MaterialBuffer
+   * @param bufferManager BufferManager instance
+   * @param maxMaterials Maximum number of materials
+   * @param bufferName Buffer name for identification
+   */
+  constructor(bufferManager, maxMaterials = 1e3, bufferName = "materials") {
+    this.bufferManager = bufferManager;
+    this.bufferName = bufferName;
+    this.maxMaterials = Math.max(maxMaterials, this.minBufferSize);
+    this.bufferSize = BufferLayout.materialBufferSize(this.maxMaterials);
+    this.materialManager = null;
+    this.createBuffer();
+  }
+  /**
+   * Set material manager
+   * @param manager MaterialManager instance
+   */
+  setMaterialManager(manager) {
+    this.materialManager = manager;
+  }
+  /**
+   * Create the material buffer
+   */
+  createBuffer() {
+    try {
+      this.bufferManager.createStorageBuffer(this.bufferName, this.bufferSize);
+    } catch (error) {
+      throw new BufferError(`Failed to create material buffer: ${error}`);
+    }
+  }
+  /**
+   * Check if buffer needs resizing
+   * @returns True if buffer needs resizing
+   */
+  shouldResize() {
+    if (!this.materialManager) {
+      return false;
+    }
+    const currentCount = this.materialManager.getMaterialCount();
+    const utilization = currentCount / this.maxMaterials;
+    return utilization > this.targetUtilization || utilization < this.targetUtilization / 2;
+  }
+  /**
+   * Resize buffer if needed
+   */
+  resizeIfNeeded() {
+    if (!this.materialManager || !this.shouldResize()) {
+      return;
+    }
+    const currentCount = this.materialManager.getMaterialCount();
+    let newSize = Math.max(this.minBufferSize, Math.ceil(currentCount / this.targetUtilization));
+    newSize = Math.min(newSize, this.maxBufferSize);
+    if (newSize !== this.maxMaterials) {
+      this.resizeBuffer(newSize);
+    }
+  }
+  /**
+   * Update the buffer with all materials
+   */
+  update() {
+    if (!this.materialManager) {
+      return;
+    }
+    this.resizeIfNeeded();
+    const buffer = this.getBuffer();
+    if (!buffer) {
+      throw new BufferError("Material buffer not found");
+    }
+    try {
+      const materials = this.materialManager.getMaterialsForBuffer();
+      this.bufferManager.writeMaterialBuffer(buffer, materials);
+    } catch (error) {
+      throw new BufferError(`Failed to update material buffer: ${error}`);
+    }
+  }
+  /**
+   * Update only dirty materials
+   */
+  updateDirtyMaterials() {
+    if (!this.materialManager) {
+      return;
+    }
+    const dirtyMaterials = this.materialManager.getDirtyMaterials();
+    if (dirtyMaterials.size === 0) {
+      return;
+    }
+    const buffer = this.getBuffer();
+    if (!buffer) {
+      throw new BufferError("Material buffer not found");
+    }
+    try {
+      const materials = new Array(this.maxMaterials);
+      for (const id of dirtyMaterials) {
+        const material = this.materialManager.getMaterial(id);
+        const bufferIndex = this.materialManager.getBufferIndex(id);
+        if (material && bufferIndex >= 0 && bufferIndex < this.maxMaterials) {
+          materials[bufferIndex] = material;
+        }
+      }
+      this.bufferManager.writeMaterialBuffer(buffer, materials);
+      this.materialManager.clearDirtyMaterials();
+    } catch (error) {
+      throw new BufferError(`Failed to update dirty materials: ${error}`);
+    }
+  }
+  /**
+   * Resize the material buffer
+   * @param newMaxMaterials New maximum number of materials
+   */
+  resizeBuffer(newMaxMaterials) {
+    if (newMaxMaterials <= 0) {
+      throw new ValidationError("Maximum materials must be greater than 0");
+    }
+    if (newMaxMaterials === this.maxMaterials) {
+      return;
+    }
+    const newBufferSize = BufferLayout.materialBufferSize(newMaxMaterials);
+    try {
+      this.bufferManager.destroyBuffer(this.bufferName);
+      this.maxMaterials = newMaxMaterials;
+      this.bufferSize = newBufferSize;
+      this.createBuffer();
+    } catch (error) {
+      throw new BufferError(`Failed to resize material buffer: ${error}`);
+    }
+  }
+  /**
+   * Get the GPU buffer
+   * @returns GPU buffer
+   */
+  getBuffer() {
+    return this.bufferManager.getBuffer(this.bufferName);
+  }
+  /**
+   * Get maximum material capacity
+   * @returns Maximum number of materials
+   */
+  getMaxMaterials() {
+    return this.maxMaterials;
+  }
+  /**
+   * Get current buffer size in bytes
+   * @returns Buffer size in bytes
+   */
+  getBufferSize() {
+    return this.bufferSize;
+  }
+  /**
+   * Destroy the material buffer
+   */
+  destroy() {
+    try {
+      this.bufferManager.destroyBuffer(this.bufferName);
+    } catch (error) {
+      console.warn("Error destroying material buffer:", error);
+    }
+  }
+}
+
 /**
  * Common utilities
  * @module glMatrix
@@ -2037,6 +2420,288 @@ class LightManager {
   }
 }
 
+class Scene {
+  config;
+  objects;
+  materials;
+  lights;
+  camera;
+  ambientLight;
+  objectManager;
+  lightManager;
+  dirty;
+  /**
+   * Create a new scene
+   * @param config - Scene configuration
+   */
+  constructor(config = {}) {
+    this.config = {
+      maxObjects: config.maxObjects || 1e4,
+      maxLights: config.maxLights || 8,
+      camera: config.camera,
+      ambientLight: config.ambientLight
+    };
+    this.objects = [];
+    this.materials = [];
+    this.lights = [];
+    this.camera = config.camera || {
+      position: [0, 0, 5],
+      target: [0, 0, 0],
+      up: [0, 1, 0],
+      fov: 1.57,
+      // 90 degrees in radians
+      near: 0.1,
+      far: 100
+    };
+    this.ambientLight = config.ambientLight || [0.03, 0.03, 0.03];
+    this.objectManager = null;
+    this.lightManager = new LightManager(this.config.maxLights);
+    this.dirty = false;
+  }
+  /**
+   * Initialize scene with object manager
+   * @param objectManager - Object manager instance
+   */
+  initialize(objectManager) {
+    this.objectManager = objectManager;
+  }
+  /**
+   * Add object to scene
+   * @param object - SDF object data
+   * @param material - Material data (optional)
+   * @returns Object index
+   */
+  addObject(object, material) {
+    if (this.objects.length >= this.config.maxObjects) {
+      throw new ValidationError("Maximum object count reached");
+    }
+    this.objects.push(object);
+    this.materials.push(material || {
+      color: [1, 1, 1],
+      metallic: 0.5,
+      roughness: 0.5,
+      reflectance: 0.5,
+      emission: [0, 0, 0],
+      emissionIntensity: 0,
+      ambientOcclusion: 1
+    });
+    this.dirty = true;
+    return this.objects.length - 1;
+  }
+  /**
+   * Remove object from scene
+   * @param index - Object index
+   */
+  removeObject(index) {
+    if (index < 0 || index >= this.objects.length) {
+      throw new ValidationError("Invalid object index");
+    }
+    this.objects.splice(index, 1);
+    this.materials.splice(index, 1);
+    this.dirty = true;
+  }
+  /**
+   * Update object data
+   * @param index - Object index
+   * @param object - New object data
+   */
+  updateObject(index, object) {
+    if (index < 0 || index >= this.objects.length) {
+      throw new ValidationError("Invalid object index");
+    }
+    this.objects[index] = object;
+    this.dirty = true;
+  }
+  /**
+   * Update material data
+   * @param index - Object index
+   * @param material - New material data
+   */
+  updateMaterial(index, material) {
+    if (index < 0 || index >= this.materials.length) {
+      throw new ValidationError("Invalid object index");
+    }
+    this.materials[index] = material;
+    this.dirty = true;
+  }
+  /**
+   * Add light to scene
+   * @param config - Light configuration
+   * @returns Light ID or null if failed
+   */
+  addLight(config) {
+    const id = this.lightManager.createLight(config);
+    if (id !== null) {
+      this.lights = this.lightManager.getAllLights();
+      this.dirty = true;
+    }
+    return id;
+  }
+  /**
+   * Remove light from scene
+   * @param id - Light ID
+   * @returns Whether light was removed
+   */
+  removeLight(id) {
+    const removed = this.lightManager.removeLight(id);
+    if (removed) {
+      this.lights = this.lightManager.getAllLights();
+      this.dirty = true;
+    }
+    return removed;
+  }
+  /**
+   * Update light data
+   * @param id - Light ID
+   * @param updates - Light updates
+   * @returns Whether light was updated
+   */
+  updateLight(id, updates) {
+    const updated = this.lightManager.updateLight(id, updates);
+    if (updated) {
+      this.lights = this.lightManager.getAllLights();
+      this.dirty = true;
+    }
+    return updated;
+  }
+  /**
+   * Update camera data
+   * @param camera - Camera updates
+   */
+  updateCamera(camera) {
+    this.camera = { ...this.camera, ...camera };
+    this.dirty = true;
+  }
+  /**
+   * Set ambient light
+   * @param ambientLight - Ambient light color
+   */
+  setAmbientLight(ambientLight) {
+    this.ambientLight = ambientLight;
+    this.dirty = true;
+  }
+  /**
+   * Get objects
+   * @returns Objects array
+   */
+  getObjects() {
+    return [...this.objects];
+  }
+  /**
+   * Get materials
+   * @returns Materials array
+   */
+  getMaterials() {
+    return [...this.materials];
+  }
+  /**
+   * Get lights
+   * @returns Lights array
+   */
+  getLights() {
+    return [...this.lights];
+  }
+  /**
+   * Get camera data
+   * @returns Camera data
+   */
+  getCamera() {
+    return { ...this.camera };
+  }
+  /**
+   * Get ambient light
+   * @returns Ambient light color
+   */
+  getAmbientLight() {
+    return [...this.ambientLight];
+  }
+  /**
+   * Get object count
+   * @returns Object count
+   */
+  getObjectCount() {
+    return this.objects.length;
+  }
+  /**
+   * Get light count
+   * @returns Light count
+   */
+  getLightCount() {
+    return this.lights.length;
+  }
+  /**
+   * Get light manager
+   * @returns Light manager
+   */
+  getLightManager() {
+    return this.lightManager;
+  }
+  /**
+   * Get object manager
+   * @returns Object manager or null
+   */
+  getObjectManager() {
+    return this.objectManager;
+  }
+  /**
+   * Check if scene is dirty
+   * @returns Whether scene is dirty
+   */
+  isDirty() {
+    return this.dirty;
+  }
+  /**
+   * Clear dirty flag
+   */
+  clearDirtyFlag() {
+    this.dirty = false;
+  }
+  /**
+   * Get render data
+   * @returns Scene render data
+   */
+  getRenderData() {
+    return {
+      objects: this.objects,
+      materials: this.materials,
+      lights: this.lights,
+      camera: this.camera,
+      objectCount: this.objects.length,
+      lightCount: this.lights.length,
+      ambientLight: this.ambientLight
+    };
+  }
+  /**
+   * Update scene
+   * @param _deltaTime - Time since last frame
+   */
+  update(_deltaTime) {
+    if (this.objectManager) {
+      this.objectManager.syncObjects();
+    }
+    this.clearDirtyFlag();
+  }
+  /**
+   * Clear scene
+   */
+  clear() {
+    this.objects = [];
+    this.materials = [];
+    this.lights = [];
+    this.lightManager.clear();
+    this.dirty = true;
+  }
+  /**
+   * Destroy scene
+   */
+  destroy() {
+    this.clear();
+    if (this.objectManager) {
+      this.objectManager.destroyAll();
+    }
+  }
+}
+
 const GPUTextureUsage = {
   DEPTH_ATTACHMENT: 128
 };
@@ -2045,13 +2710,13 @@ class Engine {
   deviceManager;
   bufferManager;
   pipelineManager;
+  materialManager;
+  materialBuffer;
   objectManager;
-  lightManager;
-  objects;
-  materials;
-  lights;
+  scenes;
+  activeScene;
+  defaultSceneName;
   uniformData;
-  cameraData;
   animationId;
   frame;
   constructor(config) {
@@ -2062,9 +2727,14 @@ class Engine {
       backgroundColor: config.backgroundColor || [0, 0, 0]
     };
     this.deviceManager = new DeviceManager();
-    this.objects = [];
-    this.materials = [];
-    this.lights = [];
+    this.scenes = /* @__PURE__ */ new Map();
+    this.defaultSceneName = "default";
+    const defaultScene = new Scene({
+      maxObjects: this.config.maxObjects,
+      maxLights: 8
+    });
+    this.scenes.set(this.defaultSceneName, defaultScene);
+    this.activeScene = defaultScene;
     this.uniformData = {
       time: 0,
       frame: 0,
@@ -2075,15 +2745,6 @@ class Engine {
         this.config.canvas.height
       ],
       ambientLight: [0.03, 0.03, 0.03]
-    };
-    this.cameraData = {
-      position: [0, 0, 5],
-      target: [0, 0, 0],
-      up: [0, 1, 0],
-      fov: 1.57,
-      // 90 degrees in radians
-      near: 0.1,
-      far: 100
     };
     this.animationId = null;
     this.frame = 0;
@@ -2096,6 +2757,9 @@ class Engine {
       await this.deviceManager.initialize(this.config.canvas);
       const device = this.deviceManager.getDevice();
       this.bufferManager = new BufferManager(device);
+      this.materialManager = new MaterialManager(this.config.maxObjects);
+      this.materialBuffer = new MaterialBuffer(this.bufferManager, this.config.maxObjects);
+      this.materialBuffer.setMaterialManager(this.materialManager);
       this.pipelineManager = new PipelineManager(device, this.bufferManager, {
         width: this.config.canvas.width,
         height: this.config.canvas.height,
@@ -2110,7 +2774,7 @@ class Engine {
         this.config.maxObjects,
         this.bufferManager
       );
-      this.lightManager = new LightManager(8);
+      this.activeScene.initialize(this.objectManager);
       console.log("OasisSDF Engine initialized successfully");
     } catch (error) {
       throw new EngineError(`Failed to initialize engine: ${error}`);
@@ -2143,11 +2807,7 @@ class Engine {
       maxObjects * 64
       // 64 bytes per object
     );
-    const materialBuffer = this.bufferManager.createStorageBuffer(
-      "materials",
-      maxObjects * 64
-      // 64 bytes per material
-    );
+    const materialBuffer = this.materialBuffer.getBuffer();
     const lightBuffer = this.bufferManager.createStorageBuffer(
       "lights",
       maxLights * 80
@@ -2167,125 +2827,168 @@ class Engine {
     this.pipelineManager.createUniformBindGroup(uniformBuffer, cameraBuffer);
   }
   /**
-   * Add object to scene
-   * @param object - SDF object data
+   * Add object to active scene
+   * @param object - SDF object data or object config
    * @returns Object index
    */
   addObject(object) {
-    if (this.objects.length >= this.config.maxObjects) {
-      throw new ValidationError("Maximum object count reached");
+    let sdfObject;
+    if ("transform" in object) {
+      sdfObject = {
+        type: object.type,
+        position: object.transform?.position || [0, 0, 0],
+        rotation: object.transform?.rotation || [0, 0, 0],
+        scale: object.transform?.scale || [1, 1, 1]
+      };
+    } else {
+      sdfObject = object;
     }
-    this.objects.push(object);
-    this.materials.push({
-      color: [1, 1, 1],
-      metallic: 0.5,
-      roughness: 0.5,
-      reflectance: 0.5,
-      emission: [0, 0, 0],
-      emissionIntensity: 0,
-      ambientOcclusion: 1
-    });
-    this.uniformData.objectCount = this.objects.length;
+    const index = this.activeScene.addObject(sdfObject);
+    this.uniformData.objectCount = this.activeScene.getObjectCount();
     this.updateBuffers();
-    return this.objects.length - 1;
+    return index;
   }
   /**
-   * Remove object from scene
+   * Remove object from active scene
    * @param index - Object index
    */
   removeObject(index) {
-    if (index < 0 || index >= this.objects.length) {
-      throw new ValidationError("Invalid object index");
-    }
-    this.objects.splice(index, 1);
-    this.materials.splice(index, 1);
-    this.uniformData.objectCount = this.objects.length;
+    this.activeScene.removeObject(index);
+    this.uniformData.objectCount = this.activeScene.getObjectCount();
     this.updateBuffers();
   }
   /**
-   * Update object data
+   * Update object data in active scene
    * @param index - Object index
    * @param object - New object data
    */
   updateObject(index, object) {
-    if (index < 0 || index >= this.objects.length) {
-      throw new ValidationError("Invalid object index");
-    }
-    this.objects[index] = object;
+    this.activeScene.updateObject(index, object);
     this.updateBuffers();
   }
   /**
-   * Update camera data
+   * Update camera data in active scene
    * @param camera - New camera data
    */
   updateCamera(camera) {
-    this.cameraData = { ...this.cameraData, ...camera };
+    this.activeScene.updateCamera(camera);
     this.updateBuffers();
   }
   /**
-   * Add light to scene
+   * Add light to active scene
    */
   addLight(config) {
-    const id = this.lightManager.createLight(config);
+    const id = this.activeScene.addLight(config);
     if (id !== null) {
-      this.lights = this.lightManager.getAllLights();
-      this.uniformData.lightCount = this.lights.length;
+      this.uniformData.lightCount = this.activeScene.getLightCount();
       this.updateBuffers();
     }
     return id;
   }
   /**
-   * Remove light from scene
+   * Remove light from active scene
    */
   removeLight(id) {
-    const removed = this.lightManager.removeLight(id);
+    const removed = this.activeScene.removeLight(id);
     if (removed) {
-      this.lights = this.lightManager.getAllLights();
-      this.uniformData.lightCount = this.lights.length;
+      this.uniformData.lightCount = this.activeScene.getLightCount();
       this.updateBuffers();
     }
     return removed;
   }
   /**
-   * Update light data
+   * Update light data in active scene
    */
   updateLight(id, updates) {
-    const updated = this.lightManager.updateLight(id, updates);
+    const updated = this.activeScene.updateLight(id, updates);
     if (updated) {
-      this.lights = this.lightManager.getAllLights();
       this.updateBuffers();
     }
     return updated;
   }
   /**
-   * Get light manager
+   * Get light manager from active scene
    */
   getLightManager() {
-    return this.lightManager;
+    return this.activeScene.getLightManager();
+  }
+  /**
+   * Create a new material
+   * @param material - Material data
+   * @returns Material ID
+   */
+  createMaterial(material) {
+    return this.materialManager.createMaterial(material);
+  }
+  /**
+   * Update an existing material
+   * @param id - Material ID
+   * @param material - Material data
+   */
+  updateMaterial(id, material) {
+    this.materialManager.updateMaterial(id, material);
+  }
+  /**
+   * Get material by ID
+   * @param id - Material ID
+   * @returns Material data or null
+   */
+  getMaterial(id) {
+    return this.materialManager.getMaterial(id);
+  }
+  /**
+   * Release material (decrement ref count and destroy if no references)
+   * @param id - Material ID
+   * @returns Whether material was destroyed
+   */
+  releaseMaterial(id) {
+    return this.materialManager.releaseMaterial(id);
+  }
+  /**
+   * Reference a material (increment ref count)
+   * @param id - Material ID
+   */
+  referenceMaterial(id) {
+    this.materialManager.referenceMaterial(id);
+  }
+  /**
+   * Get material manager
+   * @returns Material manager
+   */
+  getMaterialManager() {
+    return this.materialManager;
+  }
+  /**
+   * Get material buffer
+   * @returns Material buffer
+   */
+  getMaterialBuffer() {
+    return this.materialBuffer;
   }
   /**
    * Update buffers with current data
    */
   updateBuffers() {
+    const renderData = this.activeScene.getRenderData();
     const objectBuffer = this.bufferManager.getBuffer("objects");
     if (objectBuffer) {
-      this.bufferManager.writeObjectBuffer(objectBuffer, this.objects);
+      this.bufferManager.writeObjectBuffer(objectBuffer, renderData.objects);
     }
-    const materialBuffer = this.bufferManager.getBuffer("materials");
-    if (materialBuffer) {
-      this.bufferManager.writeMaterialBuffer(materialBuffer, this.materials);
+    if (this.materialBuffer) {
+      this.materialBuffer.update();
     }
     const lightBuffer = this.bufferManager.getBuffer("lights");
     if (lightBuffer) {
-      this.bufferManager.writeLightBuffer(lightBuffer, this.lights);
+      this.bufferManager.writeLightBuffer(lightBuffer, renderData.lights);
     }
     const uniformBuffer = this.bufferManager.getBuffer("uniforms");
     if (uniformBuffer) {
+      this.uniformData.ambientLight = renderData.ambientLight;
       this.bufferManager.writeUniformBuffer(uniformBuffer, this.uniformData);
     }
     const cameraBuffer = this.bufferManager.getBuffer("camera");
     if (cameraBuffer) {
-      this.bufferManager.writeCameraBuffer(cameraBuffer, this.cameraData);
+      this.bufferManager.writeCameraBuffer(cameraBuffer, renderData.camera);
     }
   }
   /**
@@ -2297,7 +3000,7 @@ class Engine {
     const context = this.deviceManager.getContext();
     this.uniformData.time += deltaTime;
     this.uniformData.frame = this.frame++;
-    this.objectManager.syncObjects();
+    this.activeScene.update(deltaTime);
     this.updateBuffers();
     const texture = context.getCurrentTexture();
     const textureView = texture.createView();
@@ -2384,18 +3087,100 @@ class Engine {
     return this.objectManager;
   }
   /**
-   * Get objects
+   * Get objects from active scene
    * @returns Objects array
    */
   getObjects() {
-    return [...this.objects];
+    return this.activeScene.getObjects();
   }
   /**
-   * Get camera data
+   * Get camera data from active scene
    * @returns Camera data
    */
   getCamera() {
-    return { ...this.cameraData };
+    return this.activeScene.getCamera();
+  }
+  /**
+   * Create a new scene
+   * @param name - Scene name
+   * @param config - Scene configuration
+   * @returns Created scene
+   */
+  createScene(name, config = {}) {
+    if (this.scenes.has(name)) {
+      throw new ValidationError(`Scene with name "${name}" already exists`);
+    }
+    const scene = new Scene({
+      maxObjects: config.maxObjects || this.config.maxObjects,
+      maxLights: config.maxLights || 8,
+      ...config
+    });
+    if (this.objectManager) {
+      scene.initialize(this.objectManager);
+    }
+    this.scenes.set(name, scene);
+    return scene;
+  }
+  /**
+   * Set active scene
+   * @param name - Scene name
+   * @returns Whether scene was set successfully
+   */
+  setActiveScene(name) {
+    const scene = this.scenes.get(name);
+    if (!scene) {
+      return false;
+    }
+    this.activeScene = scene;
+    this.uniformData.objectCount = scene.getObjectCount();
+    this.uniformData.lightCount = scene.getLightCount();
+    this.updateBuffers();
+    return true;
+  }
+  /**
+   * Get active scene
+   * @returns Active scene
+   */
+  getActiveScene() {
+    return this.activeScene;
+  }
+  /**
+   * Get scene by name
+   * @param name - Scene name
+   * @returns Scene or null
+   */
+  getScene(name) {
+    return this.scenes.get(name) || null;
+  }
+  /**
+   * Remove scene
+   * @param name - Scene name
+   * @returns Whether scene was removed
+   */
+  removeScene(name) {
+    if (name === this.defaultSceneName) {
+      throw new ValidationError("Cannot remove default scene");
+    }
+    const scene = this.scenes.get(name);
+    if (!scene) {
+      return false;
+    }
+    scene.destroy();
+    this.scenes.delete(name);
+    if (this.activeScene === scene) {
+      this.activeScene = this.scenes.get(this.defaultSceneName);
+      this.uniformData.objectCount = this.activeScene.getObjectCount();
+      this.uniformData.lightCount = this.activeScene.getLightCount();
+      this.updateBuffers();
+    }
+    return true;
+  }
+  /**
+   * Get all scenes
+   * @returns Map of scenes
+   */
+  getScenes() {
+    return new Map(this.scenes);
   }
   /**
    * Cleanup resources
@@ -2403,11 +3188,18 @@ class Engine {
   cleanup() {
     try {
       this.stop();
+      for (const [, scene] of this.scenes) {
+        scene.destroy();
+      }
+      this.scenes.clear();
       if (this.objectManager) {
         this.objectManager.destroyAll();
       }
       if (this.pipelineManager) {
         this.pipelineManager.cleanup();
+      }
+      if (this.materialBuffer) {
+        this.materialBuffer.destroy();
       }
       if (this.bufferManager) {
         this.bufferManager.cleanup();
@@ -2585,4 +3377,572 @@ class Transform {
   }
 }
 
-export { BufferError, BufferLayout, BufferManager, DefaultLights, DeviceManager, Engine, EngineError, LightType, OasisSDFError, ObjectChangeFlags, ObjectManager, ObjectPool, ObjectState, PipelineError, PipelineManager, Primitives, SDFObject, SDFPrimitive, Transform, ValidationError, WebGPUError };
+class PerformanceProfiler {
+  metrics = [];
+  config;
+  lastFrameTime = 0;
+  frameCount = 0;
+  lastFpsUpdate = 0;
+  currentFps = 0;
+  frameTimes = [];
+  isRunning = false;
+  startTime = 0;
+  constructor(config = {}) {
+    this.config = {
+      enableGPUTiming: config.enableGPUTiming ?? false,
+      sampleInterval: config.sampleInterval ?? 1e3,
+      maxMetrics: config.maxMetrics ?? 1e4,
+      trackMemory: config.trackMemory ?? true
+    };
+  }
+  start() {
+    if (this.isRunning) {
+      return;
+    }
+    this.isRunning = true;
+    this.startTime = performance.now();
+    this.lastFrameTime = this.startTime;
+    this.lastFpsUpdate = this.startTime;
+    this.frameCount = 0;
+    this.currentFps = 0;
+    this.frameTimes = [];
+    this.metrics = [];
+  }
+  stop() {
+    this.isRunning = false;
+  }
+  recordFrame(objectCount = 0) {
+    if (!this.isRunning) {
+      return;
+    }
+    const now = performance.now();
+    const frameTime = now - this.lastFrameTime;
+    this.lastFrameTime = now;
+    this.frameCount++;
+    this.frameTimes.push(frameTime);
+    if (this.frameTimes.length > 60) {
+      this.frameTimes.shift();
+    }
+    const elapsed = now - this.lastFpsUpdate;
+    if (elapsed >= this.config.sampleInterval) {
+      this.currentFps = this.frameCount / elapsed * 1e3;
+      this.frameCount = 0;
+      this.lastFpsUpdate = now;
+    }
+    const metrics = {
+      fps: this.currentFps,
+      frameTime,
+      memoryUsage: this.getMemoryUsage(),
+      objectCount,
+      timestamp: now
+    };
+    this.metrics.push(metrics);
+    if (this.metrics.length > this.config.maxMetrics) {
+      this.metrics.shift();
+    }
+  }
+  getCurrentFPS() {
+    return this.currentFps;
+  }
+  getCurrentFrameTime() {
+    if (this.frameTimes.length === 0) {
+      return 0;
+    }
+    const sum = this.frameTimes.reduce((a, b) => a + b, 0);
+    return sum / this.frameTimes.length;
+  }
+  getMemoryUsage() {
+    if (!this.config.trackMemory) {
+      return 0;
+    }
+    const memory = performance.memory;
+    if (memory) {
+      return memory.usedJSHeapSize / (1024 * 1024);
+    }
+    return 0;
+  }
+  getMetrics() {
+    return [...this.metrics];
+  }
+  getStatistics() {
+    if (this.metrics.length === 0) {
+      return {
+        avgFPS: 0,
+        minFPS: 0,
+        maxFPS: 0,
+        avgFrameTime: 0,
+        minFrameTime: 0,
+        maxFrameTime: 0,
+        avgMemoryUsage: 0,
+        peakMemoryUsage: 0,
+        totalFrames: 0,
+        duration: 0
+      };
+    }
+    const fpsValues = this.metrics.map((m) => m.fps).filter((f) => f > 0);
+    const frameTimes = this.metrics.map((m) => m.frameTime);
+    const memoryValues = this.metrics.map((m) => m.memoryUsage);
+    return {
+      avgFPS: fpsValues.length > 0 ? fpsValues.reduce((a, b) => a + b, 0) / fpsValues.length : 0,
+      minFPS: fpsValues.length > 0 ? Math.min(...fpsValues) : 0,
+      maxFPS: fpsValues.length > 0 ? Math.max(...fpsValues) : 0,
+      avgFrameTime: frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length,
+      minFrameTime: Math.min(...frameTimes),
+      maxFrameTime: Math.max(...frameTimes),
+      avgMemoryUsage: memoryValues.length > 0 ? memoryValues.reduce((a, b) => a + b, 0) / memoryValues.length : 0,
+      peakMemoryUsage: memoryValues.length > 0 ? Math.max(...memoryValues) : 0,
+      totalFrames: this.metrics.length,
+      duration: performance.now() - this.startTime
+    };
+  }
+  getAverageFPS() {
+    return this.getStatistics().avgFPS;
+  }
+  getAverageFrameTime() {
+    return this.getStatistics().avgFrameTime;
+  }
+  exportToJSON() {
+    return JSON.stringify({
+      config: this.config,
+      statistics: this.getStatistics(),
+      metrics: this.metrics
+    }, null, 2);
+  }
+  exportToCSV() {
+    const headers = "timestamp,fps,frameTime,memoryUsage,objectCount\n";
+    const rows = this.metrics.map(
+      (m) => `${m.timestamp},${m.fps},${m.frameTime},${m.memoryUsage},${m.objectCount}`
+    ).join("\n");
+    return headers + rows;
+  }
+  generateReport() {
+    const stats = this.getStatistics();
+    return `# Performance Report
+
+## Summary
+- **Duration**: ${(stats.duration / 1e3).toFixed(2)} seconds
+- **Total Frames**: ${stats.totalFrames}
+
+## FPS
+- **Average**: ${stats.avgFPS.toFixed(1)}
+- **Min**: ${stats.minFPS.toFixed(1)}
+- **Max**: ${stats.maxFPS.toFixed(1)}
+
+## Frame Time
+- **Average**: ${stats.avgFrameTime.toFixed(2)} ms
+- **Min**: ${stats.minFrameTime.toFixed(2)} ms
+- **Max**: ${stats.maxFrameTime.toFixed(2)} ms
+
+## Memory Usage
+- **Average**: ${stats.avgMemoryUsage.toFixed(2)} MB
+- **Peak**: ${stats.peakMemoryUsage.toFixed(2)} MB
+
+## Performance Targets
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| FPS | >60 | ${stats.avgFPS.toFixed(1)} | ${stats.avgFPS >= 60 ? "✅ Pass" : "❌ Fail"} |
+| Frame Time | <16ms | ${stats.avgFrameTime.toFixed(2)}ms | ${stats.avgFrameTime < 16 ? "✅ Pass" : "❌ Fail"} |
+`;
+  }
+  reset() {
+    this.metrics = [];
+    this.frameTimes = [];
+    this.frameCount = 0;
+    this.currentFps = 0;
+    this.startTime = performance.now();
+    this.lastFrameTime = this.startTime;
+    this.lastFpsUpdate = this.startTime;
+  }
+  isActive() {
+    return this.isRunning;
+  }
+}
+
+class MemoryProfiler {
+  snapshots = [];
+  bufferAllocations = /* @__PURE__ */ new Map();
+  config;
+  peakGPUMemory = 0;
+  peakJSHeap = 0;
+  totalAllocations = 0;
+  totalDeallocations = 0;
+  constructor(config = {}) {
+    this.config = {
+      trackGPUBuffers: config.trackGPUBuffers ?? true,
+      trackJSHeap: config.trackJSHeap ?? true,
+      snapshotInterval: config.snapshotInterval ?? 1e3,
+      maxSnapshots: config.maxSnapshots ?? 1e3
+    };
+  }
+  /**
+   * Record a buffer allocation
+   */
+  recordBufferAllocation(id, size, usage = 0) {
+    if (!this.config.trackGPUBuffers) {
+      return;
+    }
+    const allocation = {
+      id,
+      size,
+      usage,
+      createdAt: performance.now(),
+      active: true
+    };
+    this.bufferAllocations.set(id, allocation);
+    this.totalAllocations++;
+    const currentGPU = this.getTotalGPUMemory();
+    if (currentGPU > this.peakGPUMemory) {
+      this.peakGPUMemory = currentGPU;
+    }
+  }
+  /**
+   * Record a buffer deallocation
+   */
+  recordBufferDeallocation(id) {
+    if (!this.config.trackGPUBuffers) {
+      return;
+    }
+    const allocation = this.bufferAllocations.get(id);
+    if (allocation) {
+      allocation.active = false;
+      this.totalDeallocations++;
+    }
+  }
+  /**
+   * Take a memory snapshot
+   */
+  takeSnapshot(objectCount = 0, sceneCount = 0) {
+    const snapshot = {
+      timestamp: performance.now(),
+      gpuBuffers: this.getTotalGPUMemory(),
+      objectCount,
+      sceneCount,
+      jsHeapSize: this.getJSHeapSize(),
+      jsHeapLimit: this.getJSHeapLimit()
+    };
+    this.snapshots.push(snapshot);
+    if (snapshot.jsHeapSize > this.peakJSHeap) {
+      this.peakJSHeap = snapshot.jsHeapSize;
+    }
+    if (this.snapshots.length > this.config.maxSnapshots) {
+      this.snapshots.shift();
+    }
+    return snapshot;
+  }
+  /**
+   * Get total GPU memory usage in MB
+   */
+  getTotalGPUMemory() {
+    let total = 0;
+    for (const [, allocation] of this.bufferAllocations) {
+      if (allocation.active) {
+        total += allocation.size;
+      }
+    }
+    return total / (1024 * 1024);
+  }
+  /**
+   * Get JavaScript heap size in MB
+   */
+  getJSHeapSize() {
+    if (!this.config.trackJSHeap) {
+      return 0;
+    }
+    const memory = performance.memory;
+    if (memory) {
+      return memory.usedJSHeapSize / (1024 * 1024);
+    }
+    return 0;
+  }
+  /**
+   * Get JavaScript heap limit in MB
+   */
+  getJSHeapLimit() {
+    if (!this.config.trackJSHeap) {
+      return 0;
+    }
+    const memory = performance.memory;
+    if (memory) {
+      return memory.jsHeapSizeLimit / (1024 * 1024);
+    }
+    return 0;
+  }
+  /**
+   * Get all snapshots
+   */
+  getSnapshots() {
+    return [...this.snapshots];
+  }
+  /**
+   * Get memory statistics
+   */
+  getStatistics() {
+    const currentGPU = this.getTotalGPUMemory();
+    const currentJSHeap = this.getJSHeapSize();
+    let activeBufferCount = 0;
+    for (const [, allocation] of this.bufferAllocations) {
+      if (allocation.active) {
+        activeBufferCount++;
+      }
+    }
+    return {
+      currentGPUMemory: currentGPU,
+      peakGPUMemory: this.peakGPUMemory,
+      currentJSHeap,
+      peakJSHeap: this.peakJSHeap,
+      activeBufferCount,
+      totalAllocations: this.totalAllocations,
+      totalDeallocations: this.totalDeallocations,
+      potentialLeak: this.detectMemoryLeak()
+    };
+  }
+  /**
+   * Detect potential memory leaks
+   */
+  detectMemoryLeak() {
+    if (this.snapshots.length < 3) {
+      return false;
+    }
+    const recentSnapshots = this.snapshots.slice(-10);
+    let increasingCount = 0;
+    for (let i = 1; i < recentSnapshots.length; i++) {
+      if (recentSnapshots[i].jsHeapSize > recentSnapshots[i - 1].jsHeapSize) {
+        increasingCount++;
+      }
+    }
+    const threshold = recentSnapshots.length * 0.7;
+    return increasingCount >= threshold;
+  }
+  /**
+   * Get peak memory usage
+   */
+  getPeakMemoryUsage() {
+    return Math.max(this.peakGPUMemory, this.peakJSHeap);
+  }
+  /**
+   * Get active buffer count
+   */
+  getActiveBufferCount() {
+    let count = 0;
+    for (const [, allocation] of this.bufferAllocations) {
+      if (allocation.active) {
+        count++;
+      }
+    }
+    return count;
+  }
+  /**
+   * Get buffer allocation details
+   */
+  getBufferAllocations() {
+    return Array.from(this.bufferAllocations.values());
+  }
+  /**
+   * Export to JSON
+   */
+  exportToJSON() {
+    return JSON.stringify({
+      config: this.config,
+      statistics: this.getStatistics(),
+      snapshots: this.snapshots,
+      bufferAllocations: Array.from(this.bufferAllocations.values())
+    }, null, 2);
+  }
+  /**
+   * Generate markdown report
+   */
+  generateReport() {
+    const stats = this.getStatistics();
+    return `# Memory Profile Report
+
+## Summary
+- **Current GPU Memory**: ${stats.currentGPUMemory.toFixed(2)} MB
+- **Peak GPU Memory**: ${stats.peakGPUMemory.toFixed(2)} MB
+- **Current JS Heap**: ${stats.currentJSHeap.toFixed(2)} MB
+- **Peak JS Heap**: ${stats.peakJSHeap.toFixed(2)} MB
+
+## Buffer Statistics
+- **Active Buffers**: ${stats.activeBufferCount}
+- **Total Allocations**: ${stats.totalAllocations}
+- **Total Deallocations**: ${stats.totalDeallocations}
+
+## Memory Leak Detection
+- **Potential Leak**: ${stats.potentialLeak ? "⚠️ Yes" : "✅ No"}
+
+## Memory Targets
+| Metric | Target | Actual | Status |
+|--------|--------|--------|--------|
+| GPU Memory | <10MB | ${stats.currentGPUMemory.toFixed(2)}MB | ${stats.currentGPUMemory < 10 ? "✅ Pass" : "❌ Fail"} |
+| JS Heap | <10MB | ${stats.currentJSHeap.toFixed(2)}MB | ${stats.currentJSHeap < 10 ? "✅ Pass" : "❌ Fail"} |
+`;
+  }
+  /**
+   * Reset the profiler
+   */
+  reset() {
+    this.snapshots = [];
+    this.bufferAllocations.clear();
+    this.peakGPUMemory = 0;
+    this.peakJSHeap = 0;
+    this.totalAllocations = 0;
+    this.totalDeallocations = 0;
+  }
+  /**
+   * Check if memory tracking is available
+   */
+  static isMemoryTrackingAvailable() {
+    return typeof performance.memory !== "undefined";
+  }
+}
+
+class BrowserSupport {
+  static cachedInfo = null;
+  /**
+   * Detect browser information
+   */
+  static detect() {
+    if (this.cachedInfo) {
+      return this.cachedInfo;
+    }
+    const ua = navigator.userAgent;
+    let name = "Unknown";
+    let version = "unknown";
+    if (ua.includes("Chrome") && !ua.includes("Edg")) {
+      name = "Chrome";
+      const match = ua.match(/Chrome\/(\d+)/);
+      version = match ? match[1] || "unknown" : "unknown";
+    } else if (ua.includes("Edg")) {
+      name = "Edge";
+      const match = ua.match(/Edg\/(\d+)/);
+      version = match ? match[1] || "unknown" : "unknown";
+    } else if (ua.includes("Firefox")) {
+      name = "Firefox";
+      const match = ua.match(/Firefox\/(\d+)/);
+      version = match ? match[1] || "unknown" : "unknown";
+    } else if (ua.includes("Safari") && !ua.includes("Chrome")) {
+      name = "Safari";
+      const match = ua.match(/Version\/(\d+)/);
+      version = match ? match[1] || "unknown" : "unknown";
+    }
+    const info = {
+      name,
+      version,
+      webgpuSupported: false,
+      features: {
+        computeShaders: false,
+        storageBuffers: false,
+        depth24Stencil8: false,
+        timestampQueries: false,
+        float32Textures: false
+      }
+    };
+    this.cachedInfo = info;
+    return info;
+  }
+  /**
+   * Check if WebGPU is supported
+   */
+  static async isSupported() {
+    if (!navigator.gpu) {
+      return false;
+    }
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        return false;
+      }
+      const device = await adapter.requestDevice();
+      if (!device) {
+        return false;
+      }
+      device.destroy();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  /**
+   * Get list of missing features
+   */
+  static async getMissingFeatures() {
+    const missing = [];
+    if (!navigator.gpu) {
+      missing.push("WebGPU API");
+      return missing;
+    }
+    try {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (!adapter) {
+        missing.push("WebGPU Adapter");
+        return missing;
+      }
+      if (!adapter.features.has("shader-f16")) {
+        missing.push("16-bit shader support");
+      }
+    } catch (error) {
+      missing.push("WebGPU initialization failed");
+    }
+    return missing;
+  }
+  /**
+   * Get browser recommendation
+   */
+  static getRecommendation() {
+    const info = this.detect();
+    const recommendations = {
+      Chrome: "Chrome 113+ is required for WebGPU support. Please update your browser.",
+      Edge: "Edge 113+ is required for WebGPU support. Please update your browser.",
+      Firefox: "Firefox WebGPU support is experimental. Enable it in about:config or use Chrome/Edge.",
+      Safari: "Safari WebGPU support is coming soon. Please use Chrome or Edge for now.",
+      Unknown: "Your browser may not support WebGPU. Please use Chrome 113+ or Edge 113+."
+    };
+    const minVersions = {
+      Chrome: 113,
+      Edge: 113,
+      Firefox: 120,
+      Safari: 17
+    };
+    const minVersion = minVersions[info.name] || 0;
+    const currentVersion = parseInt(info.version, 10);
+    if (currentVersion < minVersion) {
+      const recommendation = recommendations[info.name];
+      return recommendation || recommendations.Unknown;
+    }
+    if (!info.webgpuSupported) {
+      return "WebGPU is not enabled. Please check your browser settings.";
+    }
+    return "Your browser supports WebGPU.";
+  }
+  /**
+   * Check full compatibility
+   */
+  static async checkCompatibility() {
+    const browser = this.detect();
+    browser.webgpuSupported = await this.isSupported();
+    const missingFeatures = await this.getMissingFeatures();
+    const recommendation = this.getRecommendation();
+    return {
+      supported: browser.webgpuSupported && missingFeatures.length === 0,
+      browser,
+      missingFeatures,
+      recommendation
+    };
+  }
+  /**
+   * Clear cached info (for testing)
+   */
+  static clearCache() {
+    this.cachedInfo = null;
+  }
+}
+function isWebGPUAvailable() {
+  return typeof navigator !== "undefined" && "gpu" in navigator;
+}
+function getBrowserName() {
+  return BrowserSupport.detect().name;
+}
+function getBrowserVersion() {
+  return BrowserSupport.detect().version;
+}
+
+export { BrowserSupport, BufferError, BufferLayout, BufferManager, DefaultLights, DeviceManager, Engine, EngineError, LightManager, LightType, MemoryProfiler, OasisSDFError, ObjectChangeFlags, ObjectManager, ObjectPool, ObjectState, PerformanceProfiler, PipelineError, PipelineManager, Primitives, SDFObject, SDFPrimitive, Scene, Transform, ValidationError, WebGPUError, getBrowserName, getBrowserVersion, isWebGPUAvailable };

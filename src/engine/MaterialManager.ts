@@ -6,7 +6,7 @@
  */
 
 import type { MaterialData } from '../types/index.js';
-import { BufferLayout, ValidationError } from '../types/index.js';
+import { ValidationError } from '../types/index.js';
 
 /**
  * Material instance with reference counting
