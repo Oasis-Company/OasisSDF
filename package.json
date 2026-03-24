@@ -22,7 +22,8 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\" \"examples/**/*.html\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"examples/**/*.html\"",
-    "example:material-basics": "tsx examples/material-basics.ts"
+    "example:material-basics": "tsx examples/material-basics.ts",
+    "example:pbr-materials": "tsx examples/pbr-materials.ts"
   },
   "keywords": [
     "webgpu",
