@@ -21,6 +21,9 @@ export class MaterialBuffer {
   private maxMaterials: number;
   private bufferSize: number;
   private materialManager: MaterialManager | null;
+  private targetUtilization: number = 0.7;
+  private minBufferSize: number = 100;
+  private maxBufferSize: number = 10000;
 
   /**
    * Create a new MaterialBuffer
@@ -31,8 +34,8 @@ export class MaterialBuffer {
   constructor(bufferManager: BufferManager, maxMaterials: number = 1000, bufferName: string = 'materials') {
     this.bufferManager = bufferManager;
     this.bufferName = bufferName;
-    this.maxMaterials = maxMaterials;
-    this.bufferSize = BufferLayout.materialBufferSize(maxMaterials);
+    this.maxMaterials = Math.max(maxMaterials, this.minBufferSize);
+    this.bufferSize = BufferLayout.materialBufferSize(this.maxMaterials);
     this.materialManager = null;
 
     this.createBuffer();
@@ -58,6 +61,39 @@ export class MaterialBuffer {
   }
 
   /**
+   * Check if buffer needs resizing
+   * @returns True if buffer needs resizing
+   */
+  private shouldResize(): boolean {
+    if (!this.materialManager) {
+      return false;
+    }
+
+    const currentCount = this.materialManager.getMaterialCount();
+    const utilization = currentCount / this.maxMaterials;
+    
+    // Check if utilization is too high or too low
+    return utilization > this.targetUtilization || utilization < this.targetUtilization / 2;
+  }
+
+  /**
+   * Resize buffer if needed
+   */
+  private resizeIfNeeded(): void {
+    if (!this.materialManager || !this.shouldResize()) {
+      return;
+    }
+
+    const currentCount = this.materialManager.getMaterialCount();
+    let newSize = Math.max(this.minBufferSize, Math.ceil(currentCount / this.targetUtilization));
+    newSize = Math.min(newSize, this.maxBufferSize);
+    
+    if (newSize !== this.maxMaterials) {
+      this.resizeBuffer(newSize);
+    }
+  }
+
+  /**
    * Update the buffer with all materials
    */
   update(): void {
@@ -65,14 +101,17 @@ export class MaterialBuffer {
       return;
     }
 
+    // Resize buffer if needed
+    this.resizeIfNeeded();
+
     const buffer = this.getBuffer();
     if (!buffer) {
       throw new BufferError('Material buffer not found');
     }
 
     try {
-      // Get all materials from manager
-      const materials = this.materialManager.getAllMaterials();
+      // Get materials for buffer (sparse allocation)
+      const materials = this.materialManager.getMaterialsForBuffer();
       this.bufferManager.writeMaterialBuffer(buffer, materials);
     } catch (error) {
       throw new BufferError(`Failed to update material buffer: ${error}`);
@@ -98,14 +137,15 @@ export class MaterialBuffer {
     }
 
     try {
-      // Create materials array
+      // Create materials array with current max size
       const materials = new Array(this.maxMaterials);
       
-      // Populate only dirty materials
+      // Populate only dirty materials using buffer indices
       for (const id of dirtyMaterials) {
         const material = this.materialManager.getMaterial(id);
-        if (material && id >= 0 && id < this.maxMaterials) {
-          materials[id] = material;
+        const bufferIndex = this.materialManager.getBufferIndex(id);
+        if (material && bufferIndex >= 0 && bufferIndex < this.maxMaterials) {
+          materials[bufferIndex] = material;
         }
       }
 

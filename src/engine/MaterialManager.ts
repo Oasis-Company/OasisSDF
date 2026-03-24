@@ -16,6 +16,7 @@ export interface MaterialInstance {
   data: MaterialData;
   refCount: number;
   isDirty: boolean;
+  bufferIndex: number;
 }
 
 /**
@@ -25,7 +26,10 @@ export interface MaterialInstance {
  */
 export class MaterialManager {
   private materials: Map<number, MaterialInstance> = new Map();
+  private materialIdToIndex: Map<number, number> = new Map();
+  private freeSlots: number[] = [];
   private nextMaterialId: number = 1;
+  private nextBufferIndex: number = 0;
   private dirtyMaterials: Set<number> = new Set();
   private maxMaterials: number;
 
@@ -35,6 +39,28 @@ export class MaterialManager {
    */
   constructor(maxMaterials: number = 1000) {
     this.maxMaterials = maxMaterials;
+  }
+
+  /**
+   * Allocate a buffer slot for a new material
+   * @returns Buffer index
+   */
+  private allocateSlot(): number {
+    if (this.freeSlots.length > 0) {
+      return this.freeSlots.pop()!;
+    }
+    if (this.nextBufferIndex >= this.maxMaterials) {
+      throw new ValidationError(`Maximum material capacity reached: ${this.maxMaterials}`);
+    }
+    return this.nextBufferIndex++;
+  }
+
+  /**
+   * Release a buffer slot when material is destroyed
+   * @param index Buffer index to release
+   */
+  private releaseSlot(index: number): void {
+    this.freeSlots.push(index);
   }
 
   /**
@@ -57,6 +83,7 @@ export class MaterialManager {
       ambientOcclusion: 1.0
     };
 
+    const bufferIndex = this.allocateSlot();
     const material: MaterialInstance = {
       id: this.nextMaterialId++,
       data: {
@@ -64,10 +91,12 @@ export class MaterialManager {
         ...materialData
       },
       refCount: 1,
-      isDirty: true
+      isDirty: true,
+      bufferIndex
     };
 
     this.materials.set(material.id, material);
+    this.materialIdToIndex.set(material.id, bufferIndex);
     this.dirtyMaterials.add(material.id);
 
     return material.id;
@@ -129,7 +158,9 @@ export class MaterialManager {
     material.refCount--;
 
     if (material.refCount <= 0) {
+      this.releaseSlot(material.bufferIndex);
       this.materials.delete(materialId);
+      this.materialIdToIndex.delete(materialId);
       this.dirtyMaterials.delete(materialId);
       return true;
     }
@@ -142,9 +173,16 @@ export class MaterialManager {
    * @returns Array of material data
    */
   getMaterialsForBuffer(): MaterialData[] {
-    return Array.from(this.materials.values())
-      .sort((a, b) => a.id - b.id)
-      .map(material => material.data);
+    // Create array with nulls for all buffer slots
+    const materials: (MaterialData | null)[] = Array(this.nextBufferIndex).fill(null);
+    
+    // Fill with material data at their buffer indices
+    for (const material of this.materials.values()) {
+      materials[material.bufferIndex] = material.data;
+    }
+    
+    // Filter out nulls and return only active materials
+    return materials.filter((material): material is MaterialData => material !== null);
   }
 
   /**
@@ -152,7 +190,7 @@ export class MaterialManager {
    * @returns Array of material data
    */
   getAllMaterials(): MaterialData[] {
-    return this.getMaterialsForBuffer();
+    return Array.from(this.materials.values()).map(material => material.data);
   }
 
   /**
@@ -202,12 +240,24 @@ export class MaterialManager {
   }
 
   /**
+   * Get buffer index for a material
+   * @param materialId Material ID
+   * @returns Buffer index or -1 if not found
+   */
+  getBufferIndex(materialId: number): number {
+    return this.materialIdToIndex.get(materialId) || -1;
+  }
+
+  /**
    * Clear all materials
    */
   clear(): void {
     this.materials.clear();
+    this.materialIdToIndex.clear();
+    this.freeSlots = [];
     this.dirtyMaterials.clear();
     this.nextMaterialId = 1;
+    this.nextBufferIndex = 0;
   }
 
   /**

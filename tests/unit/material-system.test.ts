@@ -188,14 +188,14 @@ describe('Material System', () => {
 
   describe('MaterialBuffer', () => {
     test('should initialize with correct capacity', () => {
-      expect(materialBuffer.getMaxMaterials()).toBe(10);
-      expect(materialBuffer.getBufferSize()).toBe(10 * 64); // 64 bytes per material
+      expect(materialBuffer.getMaxMaterials()).toBe(100); // Minimum buffer size
+      expect(materialBuffer.getBufferSize()).toBe(100 * 64); // 64 bytes per material
     });
 
     test('should resize buffer', () => {
-      materialBuffer.resizeBuffer(20);
-      expect(materialBuffer.getMaxMaterials()).toBe(20);
-      expect(materialBuffer.getBufferSize()).toBe(20 * 64);
+      materialBuffer.resizeBuffer(200);
+      expect(materialBuffer.getMaxMaterials()).toBe(200);
+      expect(materialBuffer.getBufferSize()).toBe(200 * 64);
     });
 
     test('should update buffer with materials', () => {
